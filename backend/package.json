@@ -1,0 +1,31 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "test": "node --test tests/recommendationRank.test.js tests/auth.google.test.js tests/planner.test.js",
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "migrate:google-only": "node scripts/migrateToGoogleOnly.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.3.2",
+    "google-auth-library": "^10.7.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.19.3",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.10",
+    "openai": "^4.104.0",
+    "socket.io": "^4.8.3",
+    "web-push": "^3.6.7"
+  }
+}

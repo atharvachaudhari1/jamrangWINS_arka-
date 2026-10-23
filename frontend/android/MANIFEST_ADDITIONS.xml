@@ -1,0 +1,53 @@
+<!--
+  AndroidManifest.xml additions for JumpyBrain app blocking.
+  Merge these into android/app/src/main/AndroidManifest.xml
+  after running: npx cap add android
+
+  1. Add these <uses-permission> tags inside <manifest>:
+-->
+
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+    tools:ignore="ProtectedPermissions" />
+<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+<!--
+  2. Add these inside <application>:
+-->
+
+<!-- Foreground service: polls UsageStats every second -->
+<service
+    android:name=".AppMonitorService"
+    android:enabled="true"
+    android:exported="false"
+    android:foregroundServiceType="dataSync" />
+
+<!-- Accessibility service: instant window-switch detection -->
+<service
+    android:name=".AppBlockerAccessibilityService"
+    android:enabled="true"
+    android:exported="true"
+    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+    <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+    </intent-filter>
+    <meta-data
+        android:name="android.accessibilityservice"
+        android:resource="@xml/accessibility_service_config" />
+</service>
+
+<!--
+  3. Add to android/app/src/main/res/values/strings.xml:
+
+  <string name="accessibility_service_description">
+      JumpyBrain uses accessibility to detect blocked apps and return you to the home screen during focus sessions.
+  </string>
+
+  4. Register plugin in MainActivity.kt — add inside init {}:
+     add(AppBlockerPlugin::class.java)
+
+  5. Register plugin in MainActivity.kt imports:
+     import com.jumpybrain.app.AppBlockerPlugin
+-->

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Required entitlements for FamilyControls app blocking.
+
+  Steps to activate:
+  1. In Xcode > Signing & Capabilities, add the "Family Controls" capability.
+     This adds com.apple.developer.family-controls automatically.
+  2. Apply for the entitlement at:
+     https://developer.apple.com/contact/request/family-controls-distribution
+  3. Add this App Group entitlement and create the group in your Apple Developer
+     account so the DeviceActivity extension shares storage with the main app.
+  4. Apply the same entitlements to the DeviceActivityMonitor extension target.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Required for FamilyControls / ManagedSettings / DeviceActivity -->
+    <key>com.apple.developer.family-controls</key>
+    <true/>
+
+    <!-- Shared storage between main app and DeviceActivity extension -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.jumpybrain.app</string>
+    </array>
+</dict>
+</plist>

@@ -1,0 +1,32 @@
+<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="jbBg" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1A1B2E"/>
+      <stop offset="100%" stop-color="#0F1020"/>
+    </linearGradient>
+    <linearGradient id="jbGrad" x1="13" y1="17" x2="82" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="42%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+  <!-- Background (required for maskable) -->
+  <rect width="100" height="100" fill="url(#jbBg)"/>
+  <!-- J dot accent -->
+  <circle cx="23" cy="23" r="5.5" fill="url(#jbGrad)"/>
+  <!-- J stem + hook -->
+  <path d="M 37 23 L 37 66 Q 37 80 20 80"
+        stroke="url(#jbGrad)" stroke-width="8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- B spine -->
+  <path d="M 55 23 L 55 80"
+        stroke="url(#jbGrad)" stroke-width="8" stroke-linecap="round"/>
+  <!-- B upper bump -->
+  <path d="M 55 23 Q 78 23 78 38 Q 78 52 55 52"
+        stroke="url(#jbGrad)" stroke-width="8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- B lower bump -->
+  <path d="M 55 52 Q 82 52 82 66 Q 82 80 55 80"
+        stroke="url(#jbGrad)" stroke-width="8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

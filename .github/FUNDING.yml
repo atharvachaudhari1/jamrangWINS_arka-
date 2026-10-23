@@ -1,0 +1,4 @@
+# Add your own Buy Me a Coffee username when you have one.
+# The in-app button stays disabled until this is set, or until
+# VITE_BUY_ME_A_COFFEE_URL is set for the frontend.
+# buy_me_a_coffee: your-username
