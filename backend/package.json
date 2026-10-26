@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "node --test tests/recommendationRank.test.js tests/auth.google.test.js tests/planner.test.js",
+    "test": "node --test tests/recommendationRank.test.js tests/auth.google.test.js tests/planner.test.js tests/mindfulnessCoach.test.js tests/nudgePolicy.test.js",
     "dev": "node --watch server.js",
     "start": "node server.js",
     "migrate:google-only": "node scripts/migrateToGoogleOnly.js"

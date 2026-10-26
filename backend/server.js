@@ -27,6 +27,7 @@ const subjectRoutes = require('./routes/subjects');
 const timetableRoutes = require('./routes/timetable');
 const rhythmRoutes = require('./routes/rhythm');
 const speechRoutes = require('./routes/speech');
+const mindfulnessRoutes = require('./routes/mindfulness');
 
 const deadlineChecker = require('./jobs/deadlineChecker');
 const integrationSync  = require('./jobs/integrationSync');
@@ -87,7 +88,7 @@ app.use(cors({
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
@@ -118,6 +119,7 @@ app.use('/api/subjects', subjectRoutes);
 app.use('/api/timetable', timetableRoutes);
 app.use('/api/rhythm', rhythmRoutes);
 app.use('/api/accessibility', speechRoutes);
+app.use('/api/mindfulness', mindfulnessRoutes);
 
 // health
 app.get('/ping', (req,res)=> res.json({ ok: true }));
