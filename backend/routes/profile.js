@@ -63,6 +63,8 @@ router.get('/', auth, async (req, res) => {
 
 // PUT /api/profile — update name, gender, email, preferredTheme
 router.put('/', auth, async (req, res) => {
+  const existing = await User.findById(req.userId);
+  if (!existing) return res.status(404).json({ error: 'User not found' });
   const { name, gender, email, preferredTheme } = req.body;
   const update = {};
 
@@ -120,7 +122,7 @@ router.put('/', auth, async (req, res) => {
 
   if (req.body?.publicProfile !== undefined) {
     const incoming = req.body.publicProfile || {};
-    const current = publicProfileOf({ publicProfile: {} });
+    const current = publicProfileOf(existing);
     const next = { ...current };
     if (incoming.name !== undefined) {
       const displayName = String(incoming.name).trim();

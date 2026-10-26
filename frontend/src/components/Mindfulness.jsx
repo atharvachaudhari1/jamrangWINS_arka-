@@ -290,6 +290,22 @@ export default function Mindfulness(){
     return ()=> document.removeEventListener('visibilitychange', onVisibility);
   }, [running]);
 
+  useEffect(() => {
+    function run(detail) {
+      if (!detail) return;
+      if (detail.mode && MODES[detail.mode]) setMode(detail.mode);
+      setRunning(detail.command !== "stop");
+    }
+    const queued = sessionStorage.getItem("doorway-mindful");
+    if (queued) {
+      sessionStorage.removeItem("doorway-mindful");
+      try { run(JSON.parse(queued)); } catch { /* ignore a bad leftover */ }
+    }
+    const onVoice = (event) => run(event.detail);
+    window.addEventListener("doorway-mindful", onVoice);
+    return () => window.removeEventListener("doorway-mindful", onVoice);
+  }, []);
+
   // Load audio duration when mode changes
   useEffect(() => {
     const audio = audioRef.current;

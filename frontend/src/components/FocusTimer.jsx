@@ -42,6 +42,22 @@ export default function FocusTimer() {
   useEffect(() => { loadTasks(); }, []);
 
   useEffect(() => {
+    function run(command) {
+      if (command === "pause") { setActive(false); setFocusActive(false); return; }
+      if (command === "reset") { reset(); return; }
+      if (command === "deep") {
+        setModeIdx(1); setWorkMins(50); setBreakMins(10); setIsWork(true); setSeconds(50 * 60); setActive(true); return;
+      }
+      setModeIdx(0); setWorkMins(25); setBreakMins(5); setIsWork(true); setSeconds(25 * 60); setActive(true);
+    }
+    const queued = sessionStorage.getItem("doorway-focus");
+    if (queued) { sessionStorage.removeItem("doorway-focus"); run(queued); }
+    const onVoice = (event) => run(event.detail);
+    window.addEventListener("doorway-focus", onVoice);
+    return () => window.removeEventListener("doorway-focus", onVoice);
+  }, []);
+
+  useEffect(() => {
     if (location.state?.taskId) setLinkedTaskId(location.state.taskId);
   }, [location.state]);
 

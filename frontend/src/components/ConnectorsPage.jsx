@@ -79,7 +79,14 @@ export default function ConnectorsPage() {
       setSearchParams({});
       loadStatus();
     } else if (error) {
-      showToast('Connection failed. Please try again.', 'error');
+      const reasons = {
+        google_denied: 'Google access was not granted. Nothing was connected.',
+        slack_denied: 'Slack access was not granted. Nothing was connected.',
+        invalid_state: 'That connection link expired or was not started from this account. Please try again.',
+        google_token_failed: 'Google did not complete the connection. Please try again.',
+        slack_token_failed: 'Slack did not complete the connection. Please try again.',
+      };
+      showToast(reasons[error] || 'Connection failed. Please try again.', 'error');
       setSearchParams({});
     }
   }, [searchParams, setSearchParams, loadStatus]);
@@ -94,8 +101,8 @@ export default function ConnectorsPage() {
     try {
       const { url } = await api.get(connector.urlEndpoint);
       window.location.href = url;
-    } catch {
-      showToast('Connection unavailable. Please try again later.', 'error');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Connection unavailable. Please try again later.', 'error');
       setConnecting(p => ({ ...p, [connector.id]: false }));
     }
   }
@@ -115,6 +122,7 @@ export default function ConnectorsPage() {
   }
 
   async function handleDisconnect(connector) {
+    if (!window.confirm(`Disconnect ${connector.label}? Tasks it already created stay on your list.`)) return;
     try {
       await api.delete(`/integrations/${connector.id}`);
       showToast(`${connector.label} disconnected.`, 'success');
@@ -159,6 +167,9 @@ export default function ConnectorsPage() {
                 {isConnected && !s.lastSyncedAt && (
                   <div className="connector-card-meta">Connected {fmtDate(s.connectedAt)} · Never synced</div>
                 )}
+                {!isConnected && s && s.configured === false && (
+                  <div className="connector-card-meta">Not set up on this server yet. The app works without it.</div>
+                )}
               </div>
 
               <div className="connector-card-actions">
@@ -182,10 +193,11 @@ export default function ConnectorsPage() {
                   <button
                     className="btn-connector btn-connector-connect"
                     onClick={() => handleConnect(connector)}
-                    disabled={connecting[connector.id]}
+                    disabled={connecting[connector.id] || s?.configured === false}
+                    title={s?.configured === false ? 'An administrator needs to add OAuth credentials first.' : undefined}
                     style={{ '--accent': connector.color }}
                   >
-                    {connecting[connector.id] ? 'Redirecting…' : 'Connect'}
+                    {connecting[connector.id] ? 'Redirecting…' : s?.configured === false ? 'Not available' : 'Connect'}
                   </button>
                 )}
               </div>

@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema({
   preferredTheme: {
     type: String,
     enum: ['dark', 'light'],
-    default: 'dark',
+    default: 'light',
   },
   availableStudyMins: { type: Number, default: 120, min: 15, max: 720 },
   rhythmEnabled: { type: Boolean, default: false },

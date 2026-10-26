@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const EnergyCheckIn = require('../models/EnergyCheckIn');
 const requireAuth = require('../utils/requireAuth');
@@ -48,7 +49,12 @@ router.post('/checkins', requireAuth, async (req, res) => {
   res.json({ saved: true, checkin });
 });
 
-router.put('/checkins/:id', requireAuth, async (req, res) => {
+function validId(req, res, next) {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'Check-in not found.' });
+  next();
+}
+
+router.put('/checkins/:id', requireAuth, validId, async (req, res) => {
   const level = parseInt(req.body?.level, 10);
   if (!Number.isFinite(level) || level < 1 || level > 5) {
     return res.status(400).json({ error: 'Energy level must be from 1 to 5.' });
@@ -65,7 +71,7 @@ router.put('/checkins/:id', requireAuth, async (req, res) => {
   res.json({ checkin });
 });
 
-router.delete('/checkins/:id', requireAuth, async (req, res) => {
+router.delete('/checkins/:id', requireAuth, validId, async (req, res) => {
   const checkin = await EnergyCheckIn.findOneAndDelete({ _id: req.params.id, userId: req.userId });
   if (!checkin) return res.status(404).json({ error: 'Check-in not found.' });
   res.json({ ok: true });

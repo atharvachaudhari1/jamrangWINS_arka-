@@ -25,6 +25,68 @@ function getInitials(name, email) {
   return (email || "?")[0].toUpperCase();
 }
 
+function PrivacySection() {
+  const [msg, setMsg] = useState(null);
+  const [confirmText, setConfirmText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function exportData() {
+    setMsg(null);
+    try {
+      const data = await api.get("/account/export");
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `doorway-export-${new Date().toLocaleDateString("en-CA")}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMsg({ type: "success", text: "Your data was downloaded as a JSON file. Connection tokens are not included." });
+    } catch {
+      setMsg({ type: "error", text: "The export could not be created. Please try again." });
+    }
+  }
+
+  async function deleteAccount(e) {
+    e.preventDefault();
+    if (confirmText !== "DELETE") return;
+    setBusy(true);
+    try {
+      await api.delete("/account", { data: { confirm: "DELETE" } });
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("user");
+      window.location.assign("/auth");
+    } catch (err) {
+      setBusy(false);
+      setMsg({ type: "error", text: err.response?.data?.error || "The account could not be deleted." });
+    }
+  }
+
+  return (
+    <section className="profile-settings-card danger-zone">
+      <div className="profile-settings-card-header">
+        <h2 className="profile-settings-card-title">Privacy and your data</h2>
+        <p className="profile-settings-card-desc">
+          Download everything {APP_NAME} stores about you, or delete it. Energy check-ins can also be removed on the{" "}
+          <Link to="/rhythm">Your Rhythm</Link> page, and connected services can be disconnected on <Link to="/connectors">Integrations</Link>.
+        </p>
+      </div>
+      <button className="btn btn-secondary" type="button" onClick={exportData}>Export my data</button>
+      <form onSubmit={deleteAccount} className="profile-form" style={{ marginTop: 20 }}>
+        <label className="profile-form-label" htmlFor="delete-confirm">
+          Delete my account and all tasks, classes, check-ins, and history. Type DELETE to confirm.
+        </label>
+        <input id="delete-confirm" className="profile-form-input" value={confirmText} autoComplete="off"
+          onChange={(e) => setConfirmText(e.target.value)} />
+        <button className="btn btn-primary" type="submit" disabled={busy || confirmText !== "DELETE"} style={{ marginTop: 12 }}>
+          {busy ? "Deleting…" : "Delete account"}
+        </button>
+      </form>
+      {msg && <div className={`profile-msg profile-msg--${msg.type}`} style={{ marginTop: 12 }}>{msg.text}</div>}
+    </section>
+  );
+}
+
 export default function ProfileSettings({ onThemeChange }) {
   const { user, updateUser } = useUser();
 
@@ -47,18 +109,33 @@ export default function ProfileSettings({ onThemeChange }) {
   const [aboutMsg, setAboutMsg] = useState(null);
 
   useEffect(() => {
-    api.get("/profile")
-      .then((profile) => {
-        const saved = profile.publicProfile || {};
-        setAbout({
-          name: saved.name || "",
-          github: saved.github || "",
-          linkedin: saved.linkedin || "",
-          portfolio: saved.portfolio || "",
-          email: saved.email || "",
-        });
-      })
-      .catch(() => {});
+    let cancelled = false;
+    function load() {
+      api.get("/profile")
+        .then((profile) => {
+          if (cancelled) return;
+          const saved = profile.publicProfile || {};
+          setAbout({
+            name: saved.name || "",
+            github: saved.github || "",
+            linkedin: saved.linkedin || "",
+            portfolio: saved.portfolio || "",
+            email: saved.email || "",
+          });
+          setProfileForm((form) => ({
+            ...form,
+            name: profile.name || form.name,
+            email: profile.email || form.email,
+          }));
+        })
+        .catch(() => {});
+    }
+    load();
+    window.addEventListener("doorway-refresh", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("doorway-refresh", load);
+    };
   }, []);
 
   async function handleAboutSave(e) {
@@ -76,7 +153,7 @@ export default function ProfileSettings({ onThemeChange }) {
     }
   }
 
-  const [selectedTheme, setSelectedTheme] = useState(user?.preferredTheme || "dark");
+  const [selectedTheme, setSelectedTheme] = useState(user?.preferredTheme || "light");
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeMsg, setThemeMsg] = useState(null);
 
@@ -323,6 +400,7 @@ export default function ProfileSettings({ onThemeChange }) {
           <SupportLink />
         </section>
 
+        <PrivacySection />
       </div>
     </div>
   );

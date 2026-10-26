@@ -3,11 +3,12 @@ const mongoose = require('mongoose');
 const taskSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   title: String,
+  description: { type: String, default: '', maxlength: 2000 },
   dueAt: Date,
   estimateMins: Number,
   completed: { type: Boolean, default: false },
   completedAt: Date,
-  subtasks: [{ title: String, completed: { type: Boolean, default: false } }],
+  subtasks: [{ title: String, estimateMins: Number, completed: { type: Boolean, default: false } }],
   importance: { type: Number, default: 1 },
   dreadScore: { type: Number, default: 3, min: 1, max: 5 },
   aiPriority: { type: String, enum: ['High', 'Medium', 'Low', null], default: null },

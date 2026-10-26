@@ -27,6 +27,7 @@ const subjectRoutes = require('./routes/subjects');
 const timetableRoutes = require('./routes/timetable');
 const rhythmRoutes = require('./routes/rhythm');
 const speechRoutes = require('./routes/speech');
+const accountRoutes = require('./routes/account');
 
 const deadlineChecker = require('./jobs/deadlineChecker');
 const integrationSync  = require('./jobs/integrationSync');
@@ -118,10 +119,28 @@ app.use('/api/subjects', subjectRoutes);
 app.use('/api/timetable', timetableRoutes);
 app.use('/api/rhythm', rhythmRoutes);
 app.use('/api/accessibility', speechRoutes);
+app.use('/api/account', accountRoutes);
 
 // health
 app.get('/ping', (req,res)=> res.json({ ok: true }));
 app.get('/health', (req,res)=> res.json({ status: 'ok' }));
+
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
+
+// Errors are answered in JSON without stack traces or internal details.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || (err.type === 'entity.parse.failed' ? 400 : 500);
+  if (status >= 500) console.error('[error]', req.method, req.path, err.message);
+  const message = status === 400 && err.type === 'entity.parse.failed'
+    ? 'The request body could not be read.'
+    : status === 413
+      ? 'That request is too large.'
+      : status < 500 && err.expose
+        ? err.message
+        : 'Something went wrong on the server. Please try again.';
+  res.status(status).json({ error: message });
+});
 
 // Cron and the HTTP listener only run on a real server (not Vercel serverless)
 if (!process.env.VERCEL) {

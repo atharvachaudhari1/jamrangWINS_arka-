@@ -1,6 +1,7 @@
 export const PREF = {
   voice: "doorway-voice",
   tts: "doorway-tts",
+  ttsVoice: "doorway-tts-voice",
   gestures: "doorway-gestures",
 };
 

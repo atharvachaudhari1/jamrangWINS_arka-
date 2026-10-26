@@ -1,32 +1,38 @@
-const GESTURES = {
-  Thumb_Up: "do",
-  Open_Palm: "rest",
-  Pointing_Up: "smaller",
-  Closed_Fist: "notnow",
-  Victory: "change",
-};
+import { createGestureGate } from "./gestureGate";
+
+export { GESTURES, GESTURE_HELP } from "./gestureGate";
 
 const VISION_VERSION = "0.10.17";
 
-export const GESTURE_HELP = [
-  ["Thumb up", "Do it"],
-  ["Open palm", "Rest"],
-  ["Point up", "Smaller"],
-  ["Closed fist", "Not now"],
-  ["Victory", "Change"],
-];
-
-export async function startGestures({ video, onAction, onError }) {
+// Camera frames stay in this browser tab. Nothing is uploaded or saved.
+export async function startGestures({ video, onAction, onError, onReady }) {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    onError?.("This browser cannot use a camera. Buttons and the keyboard still work.");
+    return null;
+  }
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-  } catch {
-    onError?.("Camera permission was blocked. Buttons and the keyboard still work.");
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 320, height: 240 }, audio: false });
+  } catch (err) {
+    onError?.(err?.name === "NotFoundError"
+      ? "No camera was found. Buttons and the keyboard still work."
+      : "Camera permission was blocked. Buttons and the keyboard still work.");
     return null;
   }
 
+  const release = () => {
+    stream.getTracks().forEach((track) => track.stop());
+    video.srcObject = null;
+  };
+
   video.srcObject = stream;
-  await video.play();
+  try {
+    await video.play();
+  } catch {
+    release();
+    onError?.("The camera preview could not start. Buttons and the keyboard still work.");
+    return null;
+  }
 
   let recognizer;
   try {
@@ -43,39 +49,47 @@ export async function startGestures({ video, onAction, onError }) {
       numHands: 1,
     });
   } catch {
-    stream.getTracks().forEach((track) => track.stop());
-    video.srcObject = null;
-    onError?.("Hand gestures could not be loaded. Buttons and the keyboard still work.");
+    release();
+    onError?.("Hand gestures could not be loaded. Check your connection. Buttons and the keyboard still work.");
     return null;
   }
 
+  const gate = createGestureGate();
   let stopped = false;
-  let lastAt = 0;
-  let frame = 0;
+  let videoFrame = 0;
+  let animationFrame = 0;
+  onReady?.();
 
-  async function loop() {
+  function loop() {
     if (stopped) return;
     if (video.readyState >= 2) {
-      const result = recognizer.recognizeForVideo(video, performance.now());
-      const name = result?.gestures?.[0]?.[0]?.categoryName;
-      const action = GESTURES[name];
-      const score = result?.gestures?.[0]?.[0]?.score || 0;
-      if (action && score > 0.7 && Date.now() - lastAt > 1800) {
-        lastAt = Date.now();
-        onAction?.(action, name);
+      try {
+        const result = recognizer.recognizeForVideo(video, performance.now());
+        const top = result?.gestures?.[0]?.[0];
+        const action = gate(top?.categoryName, top?.score || 0, Date.now());
+        if (action) onAction?.(action, top.categoryName);
+      } catch {
+        /* a dropped frame is skipped */
       }
     }
-    frame = video.requestVideoFrameCallback ? video.requestVideoFrameCallback(() => loop()) : requestAnimationFrame(loop);
+    if (video.requestVideoFrameCallback) videoFrame = video.requestVideoFrameCallback(loop);
+    else animationFrame = requestAnimationFrame(loop);
   }
   loop();
 
-  return {
+  const onHidden = () => { if (document.hidden) controller.stop(); };
+  document.addEventListener("visibilitychange", onHidden);
+
+  const controller = {
     stop() {
+      if (stopped) return;
       stopped = true;
-      if (video.cancelVideoFrameCallback && frame) video.cancelVideoFrameCallback(frame);
-      recognizer?.close?.();
-      stream.getTracks().forEach((track) => track.stop());
-      video.srcObject = null;
+      document.removeEventListener("visibilitychange", onHidden);
+      if (videoFrame && video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(videoFrame);
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      try { recognizer?.close?.(); } catch { /* already closed */ }
+      release();
     },
   };
+  return controller;
 }

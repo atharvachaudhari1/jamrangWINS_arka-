@@ -26,20 +26,20 @@ router.post('/local', async (req, res) => {
     return res.status(404).json({ error: 'Google sign-in is configured. Use that instead.' });
   }
 
+  // The local account is identified by its fixed googleId, because the
+  // student can change the email shown on it in Settings.
+  const googleId = 'local-doorway';
   const email = 'local@doorway.local';
-  let user = await User.findOne({ email });
+  let user = await User.findOne({ googleId });
   if (!user) {
     try {
-      user = await User.create({
-        email,
-        name: 'Student',
-        googleId: 'local-doorway',
-      });
+      user = await User.create({ email, name: 'Student', googleId });
     } catch (err) {
       if (err.code !== 11000) throw err;
-      user = await User.findOne({ email });
+      user = await User.findOne({ googleId });
     }
   }
+  if (!user) return res.status(409).json({ error: 'The local account could not be opened. Another account already uses local@doorway.local.' });
 
   res.json({
     user: {

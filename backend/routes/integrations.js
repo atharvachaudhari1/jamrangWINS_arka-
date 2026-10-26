@@ -7,6 +7,15 @@ const Task = require('../models/Task');
 const gmailService = require('../services/gmailService');
 const gcalService  = require('../services/gcalService');
 const slackService = require('../services/slackService');
+const { signState, verifyState } = require('../utils/oauthState');
+
+function configured() {
+  const backend = Boolean(process.env.BACKEND_URL);
+  return {
+    google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && backend),
+    slack: Boolean(process.env.SLACK_CLIENT_ID && process.env.SLACK_CLIENT_SECRET && backend),
+  };
+}
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
 
@@ -92,16 +101,25 @@ router.get('/status', auth, async (req, res) => {
     lastSyncedAt: user.integrations?.[key]?.lastSyncedAt || null,
   });
 
-  res.json({ gmail: fmt('gmail'), gcal: fmt('gcal'), slack: fmt('slack') });
+  const setup = configured();
+  res.json({
+    gmail: { ...fmt('gmail'), configured: setup.google },
+    gcal: { ...fmt('gcal'), configured: setup.google },
+    slack: { ...fmt('slack'), configured: setup.slack },
+  });
 });
 
 // ── Google OAuth (Gmail + GCal together) ─────────────────────────────────────
 
 // GET /api/integrations/google/url
 router.get('/google/url', auth, (req, res) => {
-  // Encode userId in state so the callback knows which user to update
-  const state = Buffer.from(JSON.stringify({ userId: req.userId })).toString('base64url');
-  res.json({ url: googleAuthUrl(state) });
+  if (!configured().google) {
+    return res.status(503).json({
+      error: 'Google Calendar and Gmail are not set up on this server yet. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and BACKEND_URL to the backend environment.',
+      code: 'not_configured',
+    });
+  }
+  res.json({ url: googleAuthUrl(signState(req.userId, 'google')) });
 });
 
 // GET /api/integrations/google/callback  (called by Google after consent)
@@ -113,12 +131,8 @@ router.get('/google/callback', async (req, res) => {
     return res.redirect(`${frontendUrl}/connectors?error=google_denied`);
   }
 
-  let userId;
-  try {
-    ({ userId } = JSON.parse(Buffer.from(state, 'base64url').toString()));
-  } catch {
-    return res.redirect(`${frontendUrl}/connectors?error=invalid_state`);
-  }
+  const userId = verifyState(state, 'google');
+  if (!userId) return res.redirect(`${frontendUrl}/connectors?error=invalid_state`);
 
   try {
     // Exchange code for tokens
@@ -155,8 +169,13 @@ router.get('/google/callback', async (req, res) => {
 
 // GET /api/integrations/slack/url
 router.get('/slack/url', auth, (req, res) => {
-  const state = Buffer.from(JSON.stringify({ userId: req.userId })).toString('base64url');
-  res.json({ url: slackAuthUrl(state) });
+  if (!configured().slack) {
+    return res.status(503).json({
+      error: 'Slack is not set up on this server yet. Add SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, and BACKEND_URL to the backend environment.',
+      code: 'not_configured',
+    });
+  }
+  res.json({ url: slackAuthUrl(signState(req.userId, 'slack')) });
 });
 
 // GET /api/integrations/slack/callback
@@ -168,12 +187,8 @@ router.get('/slack/callback', async (req, res) => {
     return res.redirect(`${frontendUrl}/connectors?error=slack_denied`);
   }
 
-  let userId;
-  try {
-    ({ userId } = JSON.parse(Buffer.from(state, 'base64url').toString()));
-  } catch {
-    return res.redirect(`${frontendUrl}/connectors?error=invalid_state`);
-  }
+  const userId = verifyState(state, 'slack');
+  if (!userId) return res.redirect(`${frontendUrl}/connectors?error=invalid_state`);
 
   try {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/slack/callback`;

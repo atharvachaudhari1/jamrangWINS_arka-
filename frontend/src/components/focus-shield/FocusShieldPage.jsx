@@ -110,6 +110,19 @@ export default function FocusShieldPage() {
     return () => clearTimeout(t);
   }, [local]);
 
+  useEffect(() => {
+    if (!local) return undefined;
+    function run(value) {
+      if (value === "on") setLocal((prev) => (prev ? { ...prev, isEnabled: true } : prev));
+      if (value === "off") setLocal((prev) => (prev ? { ...prev, isEnabled: false } : prev));
+    }
+    const queued = sessionStorage.getItem("doorway-shield");
+    if (queued) { sessionStorage.removeItem("doorway-shield"); run(queued); }
+    const onVoice = (event) => run(event.detail);
+    window.addEventListener("doorway-shield", onVoice);
+    return () => window.removeEventListener("doorway-shield", onVoice);
+  }, [local]);
+
   if (loading || !local) {
     return (
       <div className="profile-settings-page">

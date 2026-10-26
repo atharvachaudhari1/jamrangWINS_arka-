@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
-import { startDictation } from "../accessibility/voice";
+import { startListening } from "../accessibility/voice";
+import { recordWav } from "../accessibility/recordWav";
+import { transcribeWav } from "../accessibility/transcribe";
 import { PREF, readPref } from "../accessibility/prefs";
+import ReadAloud from "./ReadAloud";
 
 const KINDS = [
   { id: "assignment", label: "Assignment" },
@@ -18,38 +21,101 @@ const EMPTY = {
   priority: "medium",
   dueAt: "",
   estimateMins: 45,
+  description: "",
 };
+
+function toLocalInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function summary(task) {
+  return [
+    task.title,
+    task.subject ? `Subject ${task.subject}.` : "",
+    task.estimateMins ? `About ${task.estimateMins} minutes.` : "",
+    task.dueAt ? `Due ${new Date(task.dueAt).toLocaleString()}.` : "",
+    task.description || "",
+    task.subtasks?.length ? `Steps: ${task.subtasks.map((s) => s.title).join(". ")}.` : "",
+  ].filter(Boolean).join(" ");
+}
 
 export default function AcademicTasks() {
   const [form, setForm] = useState(EMPTY);
+  const [editingId, setEditingId] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [studyMins, setStudyMins] = useState(120);
+  const [filters, setFilters] = useState({ q: "", subject: "", kind: "", status: "open" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [listening, setListening] = useState(false);
+  const voiceRef = useRef(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [review, setReview] = useState(null);
 
-  async function load() {
-    setLoading(true);
+  const load = useCallback(async () => {
     setError("");
     try {
-      const [taskRes, subjectRes, profile] = await Promise.all([
-        api.get("/tasks?scope=academic"),
-        api.get("/subjects"),
-        api.get("/profile"),
-      ]);
+      const params = new URLSearchParams({ scope: "academic" });
+      if (filters.q.trim()) params.set("q", filters.q.trim());
+      if (filters.subject) params.set("subject", filters.subject);
+      if (filters.kind) params.set("kind", filters.kind);
+      if (filters.status !== "all") params.set("status", filters.status);
+      const taskRes = await api.get(`/tasks?${params}`);
       setTasks(taskRes.tasks || []);
-      setSubjects(subjectRes.subjects || []);
-      if (profile.availableStudyMins) setStudyMins(profile.availableStudyMins);
     } catch {
       setError("Academic tasks could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [filters]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    Promise.all([api.get("/subjects"), api.get("/profile")])
+      .then(([subjectRes, profile]) => {
+        setSubjects(subjectRes.subjects || []);
+        if (profile.availableStudyMins) setStudyMins(profile.availableStudyMins);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onDraft = (event) => {
+      const draft = event.detail;
+      if (!draft) {
+        setEditingId(null);
+        setForm(EMPTY);
+        return;
+      }
+      setForm((current) => ({
+        ...current,
+        ...(draft.title != null ? { title: draft.title } : {}),
+        ...(draft.subject != null ? { subject: draft.subject } : {}),
+        ...(draft.kind ? { kind: draft.kind } : {}),
+        ...(draft.priority ? { priority: draft.priority } : {}),
+        ...(draft.dueAt ? { dueAt: toLocalInput(draft.dueAt) } : {}),
+        ...(draft.estimateMins ? { estimateMins: draft.estimateMins } : {}),
+        ...(draft.notes != null ? { description: draft.notes } : {}),
+      }));
+    };
+    window.addEventListener("doorway-task-draft", onDraft);
+    return () => window.removeEventListener("doorway-task-draft", onDraft);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(load, 250);
+    const refresh = () => load();
+    window.addEventListener("doorway-refresh", refresh);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("doorway-refresh", refresh);
+    };
+  }, [load]);
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -57,9 +123,10 @@ export default function AcademicTasks() {
 
   async function saveStudyTime() {
     setNotice("");
+    setError("");
     try {
       await api.put("/profile", { availableStudyMins: Number(studyMins) });
-      setNotice("Available study time saved.");
+      setNotice("Available study time saved. Today will use it.");
     } catch (err) {
       setError(err.response?.data?.error || "Study time could not be saved.");
     }
@@ -73,60 +140,145 @@ export default function AcademicTasks() {
       setError("Add a task name.");
       return;
     }
+    const body = {
+      title: form.title.trim(),
+      subject: form.subject.trim(),
+      kind: form.kind,
+      priority: form.priority,
+      dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
+      estimateMins: Number(form.estimateMins) || 30,
+      description: form.description,
+    };
     try {
-      if (form.subject.trim()) await api.post("/subjects", { name: form.subject.trim() });
-      await api.post("/tasks", {
-        title: form.title.trim(),
-        subject: form.subject.trim(),
-        kind: form.kind,
-        priority: form.priority,
-        dueAt: form.dueAt || null,
-        estimateMins: Number(form.estimateMins) || 30,
-      });
+      if (form.subject.trim() && !subjects.some((s) => s.name.toLowerCase() === form.subject.trim().toLowerCase())) {
+        const created = await api.post("/subjects", { name: form.subject.trim() }).catch(() => null);
+        if (created?.subject) setSubjects((list) => [...list, created.subject]);
+      }
+      if (editingId) {
+        await api.put(`/tasks/${editingId}`, body);
+        setNotice("Changes saved.");
+      } else {
+        await api.post("/tasks", body);
+        setNotice("Task added. It can show up on Today.");
+      }
       setForm(EMPTY);
-      setNotice("Task added. It can show up on Today.");
+      setEditingId(null);
       load();
     } catch (err) {
       setError(err.response?.data?.error || "The task could not be saved.");
     }
   }
 
+  function startEdit(task) {
+    setEditingId(task._id);
+    setForm({
+      title: task.title || "",
+      subject: task.subject || "",
+      kind: KINDS.some((k) => k.id === task.kind) ? task.kind : "assignment",
+      priority: task.priority || "medium",
+      dueAt: toLocalInput(task.dueAt),
+      estimateMins: task.estimateMins || 30,
+      description: task.description || "",
+    });
+    setNotice("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm(EMPTY);
+  }
+
   async function complete(task) {
-    await api.put(`/tasks/${task._id}/complete`);
-    load();
+    setError("");
+    try {
+      await api.put(`/tasks/${task._id}/complete`);
+      setNotice(`Marked “${task.title}” done.`);
+      load();
+    } catch {
+      setError("That task could not be updated.");
+    }
+  }
+
+  async function reopen(task) {
+    setError("");
+    try {
+      await api.put(`/tasks/${task._id}/reopen`);
+      setNotice(`Reopened “${task.title}”.`);
+      load();
+    } catch {
+      setError("That task could not be reopened.");
+    }
   }
 
   async function remove(task) {
-    await api.delete(`/tasks/${task._id}`);
-    load();
+    setConfirmDelete(null);
+    setError("");
+    try {
+      await api.delete(`/tasks/${task._id}`);
+      setNotice(`Deleted “${task.title}”.`);
+      if (editingId === task._id) cancelEdit();
+      load();
+    } catch {
+      setError("That task could not be deleted.");
+    }
   }
 
   async function breakDown(task) {
     setNotice("");
     setError("");
+    setReview({ task, steps: [], loading: true });
     try {
-      const data = await api.post(`/tasks/${task._id}/auto-chunk`);
-      const count = data.task?.subtasks?.length || 0;
-      setNotice(count
-        ? `Broke “${task.title}” into ${count} steps. This uses AI when a key is configured, and a simple split otherwise.`
-        : "No steps were returned.");
+      const data = await api.post(`/tasks/${task._id}/breakdown`);
+      setReview({ task, steps: data.steps || [], source: data.source, warning: data.warning, loading: false });
+    } catch (err) {
+      setReview(null);
+      setError(err.response?.data?.error || "A breakdown could not be suggested. The task itself is unchanged.");
+    }
+  }
+
+  function editStep(index, field, value) {
+    setReview((current) => ({
+      ...current,
+      steps: current.steps.map((step, i) => (i === index ? { ...step, [field]: value } : step)),
+    }));
+  }
+
+  async function saveSteps() {
+    const steps = review.steps
+      .map((step) => ({ title: String(step.title).trim(), estimateMins: Number(step.estimateMins) || 15 }))
+      .filter((step) => step.title);
+    if (steps.length < 2) {
+      setError("Keep at least two named steps, or cancel.");
+      return;
+    }
+    try {
+      await api.put(`/tasks/${review.task._id}/subtasks`, { steps });
+      setNotice(`Saved ${steps.length} steps for “${review.task.title}”.`);
+      setReview(null);
       load();
-    } catch {
-      setError("The breakdown could not be created. The task itself is unchanged.");
+    } catch (err) {
+      setError(err.response?.data?.error || "The steps could not be saved.");
     }
   }
 
   function dictate() {
-    const recognition = startDictation({
-      onResult: (transcript) => update("title", transcript),
+    if (listening) {
+      voiceRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    setListening(true);
+    voiceRef.current = startListening({
+      record: recordWav,
+      transcribe: transcribeWav,
+      onResult: (transcript) => update("title", transcript.trim()),
       onError: (msg) => setError(msg),
       onEnd: () => setListening(false),
     });
-    if (recognition) setListening(true);
   }
 
-  const open = tasks.filter((task) => !task.completed);
-  const done = tasks.filter((task) => task.completed);
+  const subjectNames = [...new Set([...subjects.map((s) => s.name), ...tasks.map((t) => t.subject).filter(Boolean)])];
 
   return (
     <div>
@@ -142,18 +294,18 @@ export default function AcademicTasks() {
         </div>
       </div>
 
-      <form className="card mb-4" onSubmit={submit}>
-        <div className="card-title">Add an academic task</div>
+      <form className="card mb-4" onSubmit={submit} aria-label={editingId ? "Edit task" : "Add an academic task"}>
+        <div className="card-title">{editingId ? "Edit task" : "Add an academic task"}</div>
         <div className="academic-grid">
           <label>
             Task
-            <input className="input" value={form.title} onChange={(e) => update("title", e.target.value)} required aria-label="Task name" />
+            <input className="input" value={form.title} maxLength={500} onChange={(e) => update("title", e.target.value)} required aria-label="Task name" />
           </label>
           <label>
             Subject
-            <input className="input" list="subject-names" value={form.subject} onChange={(e) => update("subject", e.target.value)} aria-label="Subject" />
+            <input className="input" list="subject-names" value={form.subject} maxLength={120} onChange={(e) => update("subject", e.target.value)} aria-label="Subject" />
             <datalist id="subject-names">
-              {subjects.map((subject) => <option key={subject._id} value={subject.name} />)}
+              {subjectNames.map((name) => <option key={name} value={name} />)}
             </datalist>
           </label>
           <label>
@@ -179,49 +331,127 @@ export default function AcademicTasks() {
             <input className="input" type="number" min="1" max="1440" value={form.estimateMins} onChange={(e) => update("estimateMins", e.target.value)} />
           </label>
         </div>
+        <label className="block mb-4">
+          Notes (optional)
+          <textarea className="input" rows={2} maxLength={2000} value={form.description} onChange={(e) => update("description", e.target.value)} aria-label="Notes" />
+        </label>
         <div className="today-actions">
-          <button className="btn btn-primary" type="submit">Add task</button>
-          {readPref(PREF.voice) === "on" && (
-            <button className="btn btn-ghost" type="button" onClick={dictate}>{listening ? "Listening..." : "Voice title"}</button>
+          <button className="btn btn-primary" type="submit">{editingId ? "Save changes" : "Add task"}</button>
+          {editingId && <button className="btn btn-ghost" type="button" onClick={cancelEdit}>Cancel</button>}
+          {readPref(PREF.voice) === "on" ? (
+            <span className="text-sm text-muted">Say “add task …” and Doorway will add it.</span>
+          ) : (
+            <button className="btn btn-ghost" type="button" onClick={dictate} aria-pressed={listening}>{listening ? "Listening… tap to stop" : "Say the task name"}</button>
           )}
           <Link to="/todo">Open general tasks</Link>
         </div>
       </form>
 
-      {error && <p className="today-message" role="alert">{error}</p>}
+      {error && <p className="today-message today-error" role="alert">{error}</p>}
       {notice && <p className="today-message" role="status">{notice}</p>}
+
+      {review && (
+        <div className="card mb-4" role="region" aria-label="Review suggested steps">
+          <div className="card-title">Suggested steps for “{review.task.title}”</div>
+          {review.loading ? (
+            <p className="text-sm text-muted">Working out some steps…</p>
+          ) : (
+            <>
+              <p className="text-sm text-muted">
+                {review.source === "openai" ? "Suggested by AI from the task name and notes. " : "A simple template, because AI is not configured or did not respond. "}
+                Nothing is saved until you choose Save steps. Edit, remove, or add steps first.
+              </p>
+              {review.warning && <p className="text-sm text-muted">{review.warning}</p>}
+              <div className="step-editor">
+                {review.steps.map((step, index) => (
+                  <div className="step-editor-row" key={index}>
+                    <input className="input" aria-label={`Step ${index + 1}`} value={step.title} maxLength={200} onChange={(e) => editStep(index, "title", e.target.value)} />
+                    <input className="input step-mins" aria-label={`Minutes for step ${index + 1}`} type="number" min={5} max={90} value={step.estimateMins} onChange={(e) => editStep(index, "estimateMins", e.target.value)} />
+                    <button className="btn btn-ghost btn-sm" type="button" aria-label={`Remove step ${index + 1}`}
+                      onClick={() => setReview((r) => ({ ...r, steps: r.steps.filter((_, i) => i !== index) }))}>Remove</button>
+                  </div>
+                ))}
+              </div>
+              <div className="today-actions mt-3">
+                <button className="btn btn-ghost btn-sm" type="button" disabled={review.steps.length >= 8}
+                  onClick={() => setReview((r) => ({ ...r, steps: [...r.steps, { title: "", estimateMins: 15 }] }))}>Add a step</button>
+                <button className="btn btn-primary btn-sm" type="button" onClick={saveSteps}>Save steps</button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setReview(null)}>Cancel</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <div className="card-title">Academic list</div>
+        <div className="task-filters" role="search">
+          <label className="sr-only" htmlFor="task-search">Search tasks</label>
+          <input id="task-search" className="input" placeholder="Search tasks" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
+          <label className="sr-only" htmlFor="task-subject">Subject</label>
+          <select id="task-subject" className="input" value={filters.subject} onChange={(e) => setFilters({ ...filters, subject: e.target.value })}>
+            <option value="">All subjects</option>
+            {subjectNames.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="task-kind">Type</label>
+          <select id="task-kind" className="input" value={filters.kind} onChange={(e) => setFilters({ ...filters, kind: e.target.value })}>
+            <option value="">All types</option>
+            {KINDS.map((kind) => <option key={kind.id} value={kind.id}>{kind.label}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="task-status">Status</label>
+          <select id="task-status" className="input" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+            <option value="open">Open</option>
+            <option value="done">Done</option>
+            <option value="all">All</option>
+          </select>
+        </div>
         {loading ? (
           <p className="text-sm text-muted">Loading tasks...</p>
-        ) : open.length === 0 ? (
-          <p className="text-sm text-muted">No open academic tasks yet. Add one above, or use the general task list.</p>
+        ) : tasks.length === 0 ? (
+          <p className="text-sm text-muted">
+            {filters.q || filters.subject || filters.kind || filters.status !== "open"
+              ? "No tasks match these filters."
+              : "No open academic tasks yet. Add one above, or use the general task list."}
+          </p>
         ) : (
           <ul className="academic-list">
-            {open.map((task) => (
+            {tasks.map((task) => (
               <li key={task._id}>
                 <div>
-                  <strong>{task.title}</strong>
+                  <strong className={task.completed ? "text-muted" : ""}>{task.completed ? `Done: ${task.title}` : task.title}</strong>
                   <div className="text-sm text-muted">
-                    {[task.subject, task.kind, task.priority, task.estimateMins ? `${task.estimateMins} min` : "", task.dueAt ? new Date(task.dueAt).toLocaleString() : ""].filter(Boolean).join(" · ")}
+                    {[task.subject, task.kind, task.priority, task.estimateMins ? `${task.estimateMins} min` : "", task.dueAt ? `due ${new Date(task.dueAt).toLocaleString()}` : ""].filter(Boolean).join(" · ")}
                   </div>
+                  {task.description && <p className="task-desc">{task.description}</p>}
                   {task.subtasks?.length > 0 && (
-                    <ul className="academic-steps">
-                      {task.subtasks.map((step, index) => <li key={index}>{step.title}</li>)}
-                    </ul>
+                    <ol className="task-steps">
+                      {task.subtasks.map((step, index) => <li key={index}>{step.title}{step.estimateMins ? ` (${step.estimateMins} min)` : ""}</li>)}
+                    </ol>
                   )}
                 </div>
                 <div className="today-actions">
-                  <button className="btn btn-secondary btn-sm" type="button" onClick={() => complete(task)}>Done</button>
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => breakDown(task)}>Break into steps</button>
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => remove(task)}>Remove</button>
+                  {confirmDelete === task._id ? (
+                    <>
+                      <span className="text-sm">Delete this task?</span>
+                      <button className="btn btn-primary btn-sm" type="button" onClick={() => remove(task)}>Delete</button>
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => setConfirmDelete(null)}>Keep</button>
+                    </>
+                  ) : (
+                    <>
+                      {task.completed
+                        ? <button className="btn btn-secondary btn-sm" type="button" onClick={() => reopen(task)}>Reopen</button>
+                        : <button className="btn btn-secondary btn-sm" type="button" onClick={() => complete(task)}>Done</button>}
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => startEdit(task)}>Edit</button>
+                      {!task.completed && <button className="btn btn-ghost btn-sm" type="button" onClick={() => breakDown(task)}>Break into steps</button>}
+                      <ReadAloud text={summary(task)} compact />
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => setConfirmDelete(task._id)}>Delete</button>
+                    </>
+                  )}
                 </div>
               </li>
             ))}
           </ul>
         )}
-        {done.length > 0 && <p className="text-sm text-muted">Finished: {done.length}</p>}
       </div>
     </div>
   );

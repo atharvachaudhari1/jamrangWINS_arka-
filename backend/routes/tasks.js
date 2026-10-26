@@ -5,7 +5,63 @@ const Task = require('../models/Task');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 
-const { chunkTask, parseBrainDump } = require('../services/aiService');
+const { chunkTask, parseBrainDump, breakdownTask, validateSteps } = require('../services/aiService');
+
+const KINDS = ['general', 'assignment', 'project', 'reading', 'revision'];
+const PRIORITIES = ['low', 'medium', 'high'];
+
+// Shared validation for create and update. Returns { error } or { value }.
+function readTaskFields(body, { partial }) {
+  const out = {};
+  const { title, dueAt, estimateMins, dreadScore, kind, subject, priority, description } = body || {};
+  if (title !== undefined || !partial) {
+    if (typeof title !== 'string' || !title.trim()) return { error: partial ? 'Task title cannot be empty' : 'Task title is required' };
+    if (title.length > 500) return { error: 'Task title must be 500 characters or fewer' };
+    out.title = title.trim();
+  }
+  if (kind !== undefined) {
+    if (!KINDS.includes(kind)) return { error: 'Choose a task type.' };
+    out.kind = kind;
+  }
+  if (priority !== undefined) {
+    if (!PRIORITIES.includes(priority)) return { error: 'Choose a priority.' };
+    out.priority = priority;
+    out.importance = importanceForPriority(priority);
+  }
+  if (subject !== undefined) {
+    if (String(subject).length > 120) return { error: 'Subject name is too long.' };
+    out.subject = String(subject).trim();
+  }
+  if (description !== undefined) {
+    if (String(description).length > 2000) return { error: 'Notes must be 2000 characters or fewer.' };
+    out.description = String(description);
+  }
+  if (dueAt !== undefined) {
+    if (dueAt === null || dueAt === '') out.dueAt = null;
+    else {
+      const parsed = new Date(dueAt);
+      if (Number.isNaN(parsed.getTime())) return { error: 'Deadline is not a valid date.' };
+      out.dueAt = parsed;
+    }
+  }
+  if (estimateMins !== undefined && estimateMins !== null && estimateMins !== '') {
+    const mins = Number(estimateMins);
+    if (!Number.isFinite(mins) || mins < 1 || mins > 24 * 60) {
+      return { error: 'Estimated time should be between 1 and 1440 minutes.' };
+    }
+    out.estimateMins = mins;
+  }
+  if (dreadScore !== undefined) {
+    const d = Number(dreadScore);
+    if (!Number.isFinite(d) || d < 1 || d > 5) return { error: 'Difficulty should be from 1 to 5.' };
+    out.dreadScore = d;
+  }
+  return { value: out };
+}
+
+function escapeRegex(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // Rate limit AI-powered endpoints: 20 requests per hour per IP
 const aiLimiter = rateLimit({
@@ -42,10 +98,17 @@ function isValidObjectId(id) {
 
 // ─── LIST TASKS ─────────────────────────────────────────────────────
 router.get('/', auth, async (req, res) => {
-  let tasks = await Task.find({ userId: req.userId }).sort({ dueAt: 1 }).lean();
-  if (req.query.scope === 'academic') {
-    tasks = tasks.filter((task) => task.kind && task.kind !== 'general');
+  const query = { userId: req.userId };
+  if (req.query.scope === 'academic') query.kind = { $nin: ['general', null] };
+  if (req.query.kind && KINDS.includes(req.query.kind)) query.kind = req.query.kind;
+  if (req.query.subject) query.subject = String(req.query.subject).slice(0, 120);
+  if (req.query.status === 'open') query.completed = false;
+  if (req.query.status === 'done') query.completed = true;
+  if (req.query.q) {
+    const pattern = new RegExp(escapeRegex(String(req.query.q).slice(0, 100)), 'i');
+    query.$or = [{ title: pattern }, { description: pattern }, { subject: pattern }];
   }
+  const tasks = await Task.find(query).sort({ dueAt: 1 }).lean();
   const energyLevel = parseInt(req.query.energyLevel, 10);
   if (!Number.isFinite(energyLevel)) {
     return res.json({ tasks });
@@ -105,8 +168,8 @@ router.get('/ai/suggestions', auth, async (req, res) => {
       suggestions.push({
         id: 'priority_' + Date.now(),
         type: 'priority',
-        title: `🎯 Start with "${top.title}"`,
-        description: top.reason || 'This task fits your current situation and should be your top priority.',
+        title: `Start with "${top.title}"`,
+        description: top.reason || 'This task fits the energy and time you reported.',
         taskId: top.taskId,
         action: 'prioritize',
         category: top.category,
@@ -120,8 +183,8 @@ router.get('/ai/suggestions', auth, async (req, res) => {
         suggestions.push({
           id: 'energy_' + Date.now(),
           type: 'nudge',
-          title: `💪 High energy: tackle "${dreadyTask.title}"`,
-          description: 'Your energy is high — perfect time to face this challenging task before it drains you.',
+        title: `High energy: a good time for "${dreadyTask.title}"`,
+        description: 'You reported high energy, so a harder task may feel more manageable now.',
           taskId: dreadyTask._id,
           action: 'prioritize',
           category: 'high-dread',
@@ -134,21 +197,10 @@ router.get('/ai/suggestions', auth, async (req, res) => {
       suggestions.push({
         id: 'quick_' + Date.now(),
         type: 'quick-win',
-        title: `⚡ Quick win: "${quickTask.title}"`,
-        description: 'Finish this in ~15 minutes to build momentum.',
+        title: `Short task: "${quickTask.title}"`,
+        description: 'This takes about 15 minutes, if you want something small.',
         taskId: quickTask._id,
         action: 'complete',
-      });
-    }
-
-    // Procrastination alert
-    if (rates.procrastinationRate > 0.5 && ranked.length > 0) {
-      suggestions.push({
-        id: 'proc_' + Date.now(),
-        type: 'nudge',
-        title: '⏰ Pattern detected',
-        description: `You complete ${Math.round(rates.procrastinationRate * 100)}% of tasks late. Try the 2-minute rule: if it takes less than 2 minutes, do it now.`,
-        action: 'none',
       });
     }
 
@@ -210,40 +262,18 @@ router.get('/:id', auth, async (req, res) => {
 
 // ─── CREATE TASK ────────────────────────────────────────────────────
 router.post('/', auth, async (req, res) => {
-  const { title, dueAt, estimateMins, dreadScore, kind, subject, priority } = req.body;
-  const kinds = ['general', 'assignment', 'project', 'reading', 'revision'];
-  const priorities = ['low', 'medium', 'high'];
-
-  if (!title || typeof title !== 'string' || title.trim().length === 0) {
-    return res.status(400).json({ error: 'Task title is required' });
-  }
-  if (title.length > 500) {
-    return res.status(400).json({ error: 'Task title must be 500 characters or fewer' });
-  }
-  if (kind && !kinds.includes(kind)) return res.status(400).json({ error: 'Choose a task type.' });
-  if (priority && !priorities.includes(priority)) return res.status(400).json({ error: 'Choose a priority.' });
-  if (subject && String(subject).length > 120) return res.status(400).json({ error: 'Subject name is too long.' });
-
-  let parsedDue = null;
-  if (dueAt) {
-    parsedDue = new Date(dueAt);
-    if (Number.isNaN(parsedDue.getTime())) return res.status(400).json({ error: 'Deadline is not a valid date.' });
-  }
-  const mins = estimateMins == null || estimateMins === '' ? undefined : Number(estimateMins);
-  if (mins != null && (!Number.isFinite(mins) || mins < 1 || mins > 24 * 60)) {
-    return res.status(400).json({ error: 'Estimated time should be between 1 and 1440 minutes.' });
-  }
+  const { error, value } = readTaskFields(req.body, { partial: false });
+  if (error) return res.status(400).json({ error });
 
   const doc = await Task.create({
     userId: req.userId,
-    title: title.trim(),
-    dueAt: parsedDue,
-    estimateMins: mins,
-    dreadScore: dreadScore || 3,
-    kind: kind || 'general',
-    subject: subject ? String(subject).trim() : '',
-    priority: priority || 'medium',
-    importance: priority ? importanceForPriority(priority) : 1,
+    dueAt: null,
+    dreadScore: 3,
+    kind: 'general',
+    subject: '',
+    priority: 'medium',
+    importance: 1,
+    ...value,
   });
 
   req.app.get('io')?.to(`user:${req.userId}`).emit('task:created', doc);
@@ -256,28 +286,9 @@ router.put('/:id', auth, async (req, res) => {
     return res.status(400).json({ error: 'Invalid task id' });
   }
 
-  const { title, dueAt, estimateMins, dreadScore, kind, subject, priority } = req.body;
-
-  if (title !== undefined) {
-    if (typeof title !== 'string' || title.trim().length === 0) {
-      return res.status(400).json({ error: 'Task title cannot be empty' });
-    }
-    if (title.length > 500) {
-      return res.status(400).json({ error: 'Task title must be 500 characters or fewer' });
-    }
-  }
-
-  const update = {};
-  if (title !== undefined) update.title = title.trim();
-  if (dueAt !== undefined) update.dueAt = dueAt ? new Date(dueAt) : null;
-  if (estimateMins !== undefined) update.estimateMins = estimateMins;
-  if (dreadScore !== undefined) update.dreadScore = dreadScore;
-  if (kind !== undefined) update.kind = kind;
-  if (subject !== undefined) update.subject = String(subject).trim().slice(0, 120);
-  if (priority !== undefined) {
-    update.priority = priority;
-    update.importance = importanceForPriority(priority);
-  }
+  const { error, value: update } = readTaskFields(req.body, { partial: true });
+  if (error) return res.status(400).json({ error });
+  if (req.body?.postponedUntil === null) update.postponedUntil = null;
 
   const task = await Task.findOneAndUpdate(
     { _id: req.params.id, userId: req.userId },
@@ -314,6 +325,49 @@ router.put('/:id/complete', auth, async (req, res) => {
 
   req.app.get('io')?.to(`user:${req.userId}`).emit('task:updated', task);
   res.json({ ok: true });
+});
+
+router.put('/:id/reopen', auth, async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid task id' });
+  }
+  const task = await Task.findOneAndUpdate(
+    { _id: req.params.id, userId: req.userId },
+    { completed: false, completedAt: null },
+    { new: true }
+  );
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  req.app.get('io')?.to(`user:${req.userId}`).emit('task:updated', task);
+  res.json({ task });
+});
+
+// Suggested steps for review. Nothing is saved until the student confirms.
+router.post('/:id/breakdown', auth, aiLimiter, async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid task id' });
+  }
+  const task = await Task.findOne({ _id: req.params.id, userId: req.userId }).lean();
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  const result = await breakdownTask(task);
+  res.json(result);
+});
+
+router.put('/:id/subtasks', auth, async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid task id' });
+  }
+  const steps = validateSteps(req.body?.steps);
+  if (!steps && !(Array.isArray(req.body?.steps) && req.body.steps.length === 0)) {
+    return res.status(400).json({ error: 'Add at least two steps, each with a name.' });
+  }
+  const task = await Task.findOneAndUpdate(
+    { _id: req.params.id, userId: req.userId },
+    { subtasks: (steps || []).map((step) => ({ title: step.title, estimateMins: step.estimateMins, completed: false })) },
+    { new: true }
+  );
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  req.app.get('io')?.to(`user:${req.userId}`).emit('task:updated', task);
+  res.json({ task });
 });
 
 router.delete('/:id', auth, async (req, res) => {

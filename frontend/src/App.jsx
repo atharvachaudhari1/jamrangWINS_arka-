@@ -19,6 +19,7 @@ import AcademicTasks from "./components/AcademicTasks";
 import Timetable from "./components/Timetable";
 import Rhythm from "./components/Rhythm";
 import Accessibility from "./components/Accessibility";
+import VoiceAgent from "./components/VoiceAgent";
 import SupportLink from "./components/SupportLink";
 import { APP_NAME, TAGLINE } from "./config/brand";
 import { useUser } from "./contexts/UserContext";
@@ -596,9 +597,22 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   const { user, setUser, setToken } = useUser();
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("bb-theme") || "dark"
-  );
+  const [theme, setTheme] = useState(() => {
+    if (!localStorage.getItem("doorway-store-theme")) {
+      localStorage.setItem("doorway-store-theme", "1");
+      localStorage.setItem("bb-theme", "light");
+      try {
+        const raw = localStorage.getItem("user");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          parsed.preferredTheme = "light";
+          localStorage.setItem("user", JSON.stringify(parsed));
+        }
+      } catch { /* keep the saved session as it is */ }
+      return "light";
+    }
+    return localStorage.getItem("bb-theme") || "light";
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -619,6 +633,19 @@ export default function App() {
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
+  }, []);
+
+  useEffect(() => {
+    const onTheme = (event) => {
+      if (event.detail === "dark" || event.detail === "light") setTheme(event.detail);
+    };
+    const onMore = () => setMoreOpen(true);
+    window.addEventListener("doorway-theme", onTheme);
+    window.addEventListener("doorway-more", onMore);
+    return () => {
+      window.removeEventListener("doorway-theme", onTheme);
+      window.removeEventListener("doorway-more", onMore);
+    };
   }, []);
 
   function logout() {
@@ -676,6 +703,7 @@ export default function App() {
             </Routes>
           </main>
 
+          {user && <VoiceAgent />}
           {user && <BottomNav onLogout={logout} />}
         </div>
         {user && (

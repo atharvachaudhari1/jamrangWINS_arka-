@@ -63,6 +63,7 @@ async function fetchUpcomingEvents(accessToken, maxResults = 40) {
     start: event.start?.dateTime || event.start?.date || null,
     end: event.end?.dateTime || event.end?.date || null,
     allDay: !event.start?.dateTime,
+    location: event.location || '',
     sourceId: event.id,
   }));
 }

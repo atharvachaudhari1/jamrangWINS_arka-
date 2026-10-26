@@ -15,6 +15,7 @@ export default function Rhythm() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [edit, setEdit] = useState(null);
+  const [confirmAll, setConfirmAll] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -70,7 +71,15 @@ export default function Rhythm() {
               <button className="btn btn-primary" type="button" onClick={() => setEnabled(!data.enabled)}>
                 {data.enabled ? "Turn off" : "Turn on"}
               </button>
-              <button className="btn btn-ghost" type="button" onClick={removeAll}>Delete all check-ins</button>
+              {confirmAll ? (
+                <>
+                  <span className="text-sm">Delete every saved check-in? This cannot be undone.</span>
+                  <button className="btn btn-primary btn-sm" type="button" onClick={() => { setConfirmAll(false); removeAll(); }}>Delete all</button>
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => setConfirmAll(false)}>Keep them</button>
+                </>
+              ) : (
+                <button className="btn btn-ghost" type="button" onClick={() => setConfirmAll(true)} disabled={!data?.checkins?.length}>Delete all check-ins</button>
+              )}
             </div>
           </div>
 

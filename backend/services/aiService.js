@@ -61,6 +61,79 @@ Return JSON:
   }
 }
 
+const FALLBACK_STEPS = {
+  reading: ['Skim the headings and summary', 'Read the first section closely', 'Read the remaining sections', 'Write three key points in your own words'],
+  assignment: ['Re-read the brief and list what is asked', 'Gather the sources or notes you need', 'Write a rough outline', 'Draft the first section', 'Draft the remaining sections', 'Read it through and fix what stands out'],
+  project: ['Write down what done looks like', 'List the parts of the project', 'Do the smallest next part', 'Check progress and pick the next part'],
+  revision: ['Gather your notes for this topic', 'Review one section of notes', 'Test yourself on that section', 'Note what still feels unclear'],
+  general: ['Decide what the first concrete action is', 'Do that first action', 'Do the next action', 'Check what is left'],
+};
+
+function localBreakdown(task) {
+  const steps = FALLBACK_STEPS[task.kind] || FALLBACK_STEPS.general;
+  const total = Number(task.estimateMins) || 60;
+  const each = Math.max(5, Math.min(45, Math.round(total / steps.length)));
+  return steps.map((title) => ({ title, estimateMins: each }));
+}
+
+// Only keeps well-formed steps. Anything else from the model is dropped.
+function validateSteps(raw) {
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.steps) ? raw.steps : null;
+  if (!list) return null;
+  const steps = list
+    .map((item) => (typeof item === 'string' ? { title: item } : item))
+    .filter((item) => item && typeof item.title === 'string' && item.title.trim())
+    .slice(0, 8)
+    .map((item) => ({
+      title: item.title.trim().replace(/^\d+[.)]\s*/, '').slice(0, 200),
+      estimateMins: Math.max(5, Math.min(90, Math.round(Number(item.estimateMins) || 20))),
+    }));
+  return steps.length >= 2 ? steps : null;
+}
+
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('AI request timed out')), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// Ordered, reviewable steps for a large task. Never invents deadlines or requirements.
+async function breakdownTask(task, { client = getClient(), timeoutMs = 15000 } = {}) {
+  const fallback = { steps: localBreakdown(task), source: 'local' };
+  if (!client) return fallback;
+  const prompt = `Break this student task into 3 to 6 ordered, practical steps.
+Rules:
+- Only use information given below. Do not invent deadlines, page counts, rubric items, or course requirements.
+- Each step is one concrete action with a realistic estimate in minutes (5 to 90).
+- Return JSON only: {"steps":[{"title":"...","estimateMins":20}]}
+
+Title: ${String(task.title || '').slice(0, 300)}
+Type: ${task.kind || 'general'}
+Notes: ${String(task.description || '').slice(0, 1000) || 'none'}
+Total estimate: ${task.estimateMins || 'unknown'} minutes`;
+  try {
+    const response = await withTimeout(client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: prompt }],
+    }), timeoutMs);
+    const content = response?.choices?.[0]?.message?.content || '';
+    const steps = validateSteps(safeJsonParse(content, null));
+    if (!steps) return { ...fallback, warning: 'The AI reply could not be used, so a simple breakdown is shown instead.' };
+    return { steps, source: 'openai' };
+  } catch (err) {
+    const status = err?.status || err?.response?.status;
+    const warning = status === 429
+      ? 'The AI service is busy or over its limit, so a simple breakdown is shown instead.'
+      : 'The AI service did not respond, so a simple breakdown is shown instead.';
+    console.warn('breakdownTask AI failed, using fallback:', status || err.message);
+    return { ...fallback, warning };
+  }
+}
+
 function lineSplitFallback(text) {
   return text
     .split(/\n|,|;|\. /)
@@ -157,4 +230,4 @@ async function streamChatResponse(messages, systemPrompt, res) {
   res.end();
 }
 
-module.exports = { chunkTask, parseBrainDump, streamChatResponse };
+module.exports = { chunkTask, parseBrainDump, streamChatResponse, breakdownTask, validateSteps, localBreakdown };

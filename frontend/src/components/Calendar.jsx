@@ -52,7 +52,11 @@ export default function Calendar() {
     setEvents([...tasks, ...classes]);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    window.addEventListener("doorway-refresh", load);
+    return () => window.removeEventListener("doorway-refresh", load);
+  }, []);
   function handleDateClick(info) {
   // open modal for creating a task with that date
   const date = info.dateStr;
