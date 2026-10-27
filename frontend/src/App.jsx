@@ -620,6 +620,8 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("bb-theme", theme);
+    const bar = document.querySelector('meta[name="theme-color"]');
+    if (bar) bar.setAttribute("content", theme === "dark" ? "#000000" : "#f5f5f7");
   }, [theme]);
 
   // Sync theme from user's saved preference when they log in
