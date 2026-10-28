@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const Session = require('../models/Session');
 const Task = require('../models/Task');
-const DistractionEvent = require('../models/DistractionEvent');
+const { getMindfulnessRecommendation, toLegacyRecommendation, clampEnergy } = require('../services/mindfulnessCoach');
 
 function auth(req, res, next) {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
@@ -18,77 +17,12 @@ function auth(req, res, next) {
 }
 
 // GET /api/recommendations/mindfulness
-// Returns a mindfulness suggestion based on recent distraction patterns
+// Same response shape as before; ranking now lives in the mindfulness coach.
 router.get('/mindfulness', auth, async (req, res) => {
   try {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const recentDistractions = await DistractionEvent.find({
-      userId: req.userId,
-      recordedAt: { $gte: oneHourAgo },
-    }).lean();
-
-    const avgTabSwitches = recentDistractions.length > 0
-      ? recentDistractions.reduce((sum, d) => sum + (d.tabSwitchCount || 0), 0) / recentDistractions.length
-      : 0;
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    const [todayCompleted, todayTotal] = await Promise.all([
-      Task.countDocuments({ userId: req.userId, completed: true, completedAt: { $gte: todayStart } }),
-      Task.countDocuments({ userId: req.userId, createdAt: { $gte: todayStart } }),
-    ]);
-
-    const completionRate = todayTotal > 0 ? todayCompleted / todayTotal : 0.5;
-    const hour = new Date().getHours();
-    const energyLevel = parseInt(req.query.energyLevel || '3', 10);
-
-    const suggestions = [];
-
-    if (avgTabSwitches > 3) {
-      suggestions.push({
-        type: 'grounding',
-        title: 'Grounding Exercise',
-        description: `You've switched tabs ${Math.round(avgTabSwitches)} times recently. A 5-minute grounding exercise can reset your focus.`,
-        priority: 0.9,
-      });
-    }
-
-    if (hour >= 13 && hour <= 16 && energyLevel <= 2) {
-      suggestions.push({
-        type: 'meditation',
-        title: 'Afternoon Reset Meditation',
-        description: 'Your energy is low during the afternoon slump. A short meditation can restore focus.',
-        priority: 0.8,
-      });
-    }
-
-    if (completionRate < 0.3 && todayTotal > 2) {
-      suggestions.push({
-        type: 'breathing',
-        title: 'Box Breathing',
-        description: 'It\'s been a tough session for completing tasks. Two minutes of box breathing can help you reset.',
-        priority: 0.7,
-      });
-    }
-
-    if (!suggestions.length && hour >= 8 && hour <= 10) {
-      suggestions.push({
-        type: 'breathing',
-        title: 'Morning Mindfulness Check-in',
-        description: 'Start your day with three deep breaths to set a calm, focused intention.',
-        priority: 0.5,
-      });
-    }
-
-    suggestions.sort((a, b) => b.priority - a.priority);
-
-    res.json({
-      suggested: suggestions.length > 0,
-      top: suggestions[0] || null,
-      all: suggestions,
-      stats: { avgTabSwitches: Math.round(avgTabSwitches * 10) / 10, completionRate, hour },
-    });
+    const energyLevel = clampEnergy(req.query.energyLevel || '3');
+    const result = await getMindfulnessRecommendation(req.userId, { energyLevel });
+    res.json(toLegacyRecommendation(result));
   } catch (err) {
     console.error('[recommendations] mindfulness error:', err.message);
     res.status(500).json({ error: 'Failed to generate recommendation' });

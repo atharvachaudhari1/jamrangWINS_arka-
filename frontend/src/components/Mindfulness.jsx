@@ -251,8 +251,26 @@ export default function Mindfulness(){
   );
 }*/
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Affirmations from "./Affirmations";
+import RecommendedMindfulness from "./RecommendedMindfulness";
+import BreathingCircle, { BREATHING_PLANNED_SECS } from "./BreathingCircle";
+import EnergyAfterPrompt from "./EnergyAfterPrompt";
+import api from "../services/api";
+import { useEnergy } from "../contexts/EnergyContext";
+
+const TYPE_TO_MODE = {
+  meditation: "meditation",
+  grounding: "grounding",
+  sleep: "guided",
+  breathing: "breathing",
+};
+const MODE_TO_TYPE = {
+  meditation: "meditation",
+  grounding: "grounding",
+  guided: "sleep",
+  breathing: "breathing",
+};
 
 const MODES = {
   meditation: {
@@ -266,29 +284,127 @@ const MODES = {
   guided: {
     label: "Sleep meditation",
     audioSrc: "/audio/Body-Scan-for-Sleep.mp3"
+  },
+  breathing: {
+    label: "Box breathing",
+    audioSrc: null,
   }
-
 };
 
 export default function Mindfulness(){
+  const { energy } = useEnergy();
   const [mode, setMode] = useState("meditation");
   const [running, setRunning] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [audioError, setAudioError] = useState(null);
+  const [rec, setRec] = useState(null);
+  const [recLoading, setRecLoading] = useState(true);
+  const [askEnergy, setAskEnergy] = useState(false);
   const audioRef = useRef();
   const affirmRef = useRef();
+  const sessionIdRef = useRef(null);
+  const lastEndedIdRef = useRef(null);
+  const triggeredByRef = useRef("manual");
+  const elapsedSecsRef = useRef(0);
+  const endedRef = useRef(false);
+  const runningRef = useRef(false);
 
-  useEffect(()=>{
-    function onVisibility(){
-      if(document.visibilityState === 'hidden' && running){
-        setRunning(false);
-        if(affirmRef.current) affirmRef.current.messageForContext('tab-change');
+  const isBreathing = mode === "breathing";
+
+  const loadRecommendation = useCallback(async () => {
+    setRecLoading(true);
+    try {
+      const data = await api.get(`/mindfulness/recommendation?energyLevel=${energy}`);
+      setRec(data);
+    } catch {
+      setRec(null);
+    } finally {
+      setRecLoading(false);
+    }
+  }, [energy]);
+
+  useEffect(() => { loadRecommendation(); }, [loadRecommendation]);
+
+  const finishSession = useCallback(async ({ completed }) => {
+    const id = sessionIdRef.current;
+    const secs = elapsedSecsRef.current;
+    if (!id || endedRef.current) return;
+    if (!completed && secs < 30) {
+      sessionIdRef.current = null;
+      void api.delete(`/mindfulness/sessions/${id}`).catch(() => {
+        // Optional cleanup — a short start should not linger as an open session.
+      });
+      return;
+    }
+    endedRef.current = true;
+    sessionIdRef.current = null;
+    lastEndedIdRef.current = id;
+    try {
+      await api.patch(`/mindfulness/sessions/${id}`, {
+        completedSecs: Math.round(secs),
+        completed: !!completed,
+      });
+      if (completed) setAskEnergy(true);
+    } catch {
+      // Tracking is optional — the practice still counts for the person.
+    }
+  }, []);
+
+  const startTracking = useCallback(async (nextMode, triggeredBy) => {
+    endedRef.current = false;
+    elapsedSecsRef.current = 0;
+    sessionIdRef.current = null;
+    triggeredByRef.current = triggeredBy;
+    const plannedSecs = nextMode === "breathing"
+      ? BREATHING_PLANNED_SECS
+      : Math.max(1, Math.round((audioRef.current?.duration || 120)));
+    try {
+      const data = await api.post("/mindfulness/sessions", {
+        type: MODE_TO_TYPE[nextMode],
+        plannedSecs,
+        energyBefore: energy,
+        triggeredBy,
+      });
+      sessionIdRef.current = data?.session?._id || null;
+    } catch {
+      sessionIdRef.current = null;
+    }
+  }, [energy]);
+
+  const stopPlayback = useCallback((completed = false) => {
+    if (audioRef.current) {
+      elapsedSecsRef.current = audioRef.current.currentTime || elapsedSecsRef.current;
+      audioRef.current.pause();
+    }
+    runningRef.current = false;
+    setRunning(false);
+    void finishSession({ completed });
+    if (completed && affirmRef.current) affirmRef.current.messageForContext("task-complete");
+  }, [finishSession]);
+
+  useEffect(() => {
+    runningRef.current = running;
+  }, [running]);
+
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === "hidden" && runningRef.current) {
+        if (affirmRef.current) affirmRef.current.messageForContext("tab-change");
+        stopPlayback(false);
       }
     }
-    document.addEventListener('visibilitychange', onVisibility);
-    return ()=> document.removeEventListener('visibilitychange', onVisibility);
-  }, [running]);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [stopPlayback]);
+
+  useEffect(() => {
+    return () => {
+      if (runningRef.current || sessionIdRef.current) {
+        void finishSession({ completed: false });
+      }
+    };
+  }, [finishSession]);
 
   useEffect(() => {
     function run(detail) {
@@ -309,100 +425,130 @@ export default function Mindfulness(){
   // Load audio duration when mode changes
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || isBreathing) {
+      if (isBreathing) setDuration(BREATHING_PLANNED_SECS * 1000);
+      return undefined;
+    }
 
     const handleLoadedMetadata = () => {
-      console.log('Audio loaded successfully, duration:', audio.duration);
+      console.log("Audio loaded successfully, duration:", audio.duration);
       setDuration(audio.duration * 1000);
       setAudioError(null);
     };
 
     const handleError = (e) => {
-      console.error('Audio load error:', e);
-      console.error('Audio source:', audio.src);
-      console.error('Current URL:', window.location.href);
+      console.error("Audio load error:", e);
+      console.error("Audio source:", audio.src);
+      console.error("Current URL:", window.location.href);
       setAudioError(`Cannot load audio file. Check if file exists at: ${audio.src}`);
       setRunning(false);
     };
 
     const handleCanPlay = () => {
-      console.log('Audio is ready to play');
+      console.log("Audio is ready to play");
     };
 
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('error', handleError);
-    audio.addEventListener('canplay', handleCanPlay);
-    
-    // Reset and load
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("error", handleError);
+    audio.addEventListener("canplay", handleCanPlay);
+
     audio.load();
 
     return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('error', handleError);
-      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("error", handleError);
+      audio.removeEventListener("canplay", handleCanPlay);
     };
-  }, [mode]);
+  }, [mode, isBreathing]);
 
-  useEffect(()=>{
-    if(!running){ 
-      if(audioRef.current) {
+  useEffect(() => {
+    if (isBreathing) return undefined;
+
+    if (!running) {
+      if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
       }
       setCurrentTime(0);
-      return; 
+      return undefined;
     }
-    
-    const audio = audioRef.current;
-    if(audio) {
-      const playPromise = audio.play();
-      
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            console.log('Audio playback started successfully');
-          })
-          .catch(error => {
-            console.error('Playback error:', error);
-            setAudioError('Playback failed: ' + error.message);
-            setRunning(false);
-          });
-      }
-      
-      const handleAudioEnd = () => {
-        console.log('Audio ended');
-        setRunning(false);
-        if(affirmRef.current) affirmRef.current.messageForContext('task-complete');
-      };
 
-      const handleTimeUpdate = () => {
-        setCurrentTime(audio.currentTime * 1000);
-      };
-      
-      audio.addEventListener('ended', handleAudioEnd);
-      audio.addEventListener('timeupdate', handleTimeUpdate);
-      
-      return () => {
-        if(audio) {
-          audio.removeEventListener('ended', handleAudioEnd);
-          audio.removeEventListener('timeupdate', handleTimeUpdate);
-        }
-      };
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          console.log("Audio playback started successfully");
+        })
+        .catch((error) => {
+          console.error("Playback error:", error);
+          setAudioError("Playback failed: " + error.message);
+          setRunning(false);
+        });
     }
-  }, [running, mode]);
+
+    const handleAudioEnd = () => {
+      elapsedSecsRef.current = audio.duration || elapsedSecsRef.current;
+      stopPlayback(true);
+    };
+
+    const handleTimeUpdate = () => {
+      elapsedSecsRef.current = audio.currentTime;
+      setCurrentTime(audio.currentTime * 1000);
+    };
+
+    audio.addEventListener("ended", handleAudioEnd);
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+
+    return () => {
+      audio.removeEventListener("ended", handleAudioEnd);
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+    };
+  }, [running, mode, isBreathing, stopPlayback]);
 
   // Reset when mode changes
   useEffect(() => {
     setRunning(false);
     setCurrentTime(0);
     setAudioError(null);
+    elapsedSecsRef.current = 0;
   }, [mode]);
+
+  async function handleStart(triggeredBy = "manual") {
+    setAskEnergy(false);
+    await startTracking(mode, triggeredBy);
+    runningRef.current = true;
+    setRunning(true);
+  }
+
+  function handleRecommendedStart(top) {
+    const nextMode = TYPE_TO_MODE[top.type] || "meditation";
+    setMode(nextMode);
+    setAskEnergy(false);
+    setTimeout(() => {
+      startTracking(nextMode, "recommendation").then(() => {
+        runningRef.current = true;
+        setRunning(true);
+      });
+    }, 0);
+  }
+
+  async function saveEnergyAfter(level) {
+    setAskEnergy(false);
+    const id = lastEndedIdRef.current;
+    try {
+      if (id) await api.patch(`/mindfulness/sessions/${id}`, { energyAfter: level });
+    } catch { /* optional */ }
+    loadRecommendation();
+  }
 
   const formatTime = (ms) => {
     const seconds = Math.floor(ms / 1000);
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -411,6 +557,8 @@ export default function Mindfulness(){
     <div>
       <h1 className="page-title">Mindfulness</h1>
       <p className="page-subtitle">Audio-guided practices to reset your attention</p>
+
+      <RecommendedMindfulness rec={rec} loading={recLoading} onStart={handleRecommendedStart} />
 
       <div className="grid-main">
         <div className="card">
@@ -426,7 +574,7 @@ export default function Mindfulness(){
             ))}
           </select>
 
-          {audioError && (
+          {audioError && !isBreathing && (
             <div
               style={{
                 padding: "10px 14px",
@@ -441,37 +589,57 @@ export default function Mindfulness(){
             </div>
           )}
 
-          <div className={`audio-player ${running ? "playing" : ""}`}>
-            <div className="audio-state-label">
-              {running ? "Session in progress" : "Ready to begin"}
+          {isBreathing ? (
+            <BreathingCircle
+              running={running}
+              onTick={(secs) => {
+                elapsedSecsRef.current = secs;
+                setCurrentTime(secs * 1000);
+              }}
+              onComplete={() => stopPlayback(true)}
+            />
+          ) : (
+            <div className={`audio-player ${running ? "playing" : ""}`}>
+              <div className="audio-state-label">
+                {running ? "Session in progress" : "Ready to begin"}
+              </div>
+              <div className="audio-time">{formatTime(currentTime)}</div>
+              {duration > 0 && (
+                <div className="audio-duration">of {formatTime(duration)}</div>
+              )}
+              <div className="audio-progress">
+                <div className="audio-progress-fill" style={{ width: `${progressPct}%` }} />
+              </div>
             </div>
-            <div className="audio-time">{formatTime(currentTime)}</div>
-            {duration > 0 && (
-              <div className="audio-duration">of {formatTime(duration)}</div>
-            )}
-            <div className="audio-progress">
-              <div className="audio-progress-fill" style={{ width: `${progressPct}%` }} />
-            </div>
-          </div>
+          )}
 
-          <audio ref={audioRef} src={MODES[mode].audioSrc} preload="metadata" />
+          {!isBreathing && (
+            <audio ref={audioRef} src={MODES[mode].audioSrc} preload="metadata" />
+          )}
 
           <div className="flex gap-2 mt-4">
             <button
               className="btn btn-primary"
-              onClick={() => setRunning(true)}
-              disabled={running || !!audioError}
+              onClick={() => handleStart("manual")}
+              disabled={running || (!isBreathing && !!audioError)}
             >
               ▶ Start
             </button>
             <button
               className="btn btn-ghost"
-              onClick={() => setRunning(false)}
+              onClick={() => stopPlayback(false)}
               disabled={!running}
             >
               ⏹ Stop
             </button>
           </div>
+
+          {askEnergy && (
+            <EnergyAfterPrompt
+              onPick={saveEnergyAfter}
+              onSkip={() => { setAskEnergy(false); loadRecommendation(); }}
+            />
+          )}
         </div>
 
         <aside className="stack">
