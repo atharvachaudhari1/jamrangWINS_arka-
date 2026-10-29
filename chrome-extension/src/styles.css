@@ -55,6 +55,11 @@ html, body, #root {
 .signal-list dt { color: var(--muted); }
 .signal-list dd { margin: 0; text-align: right; text-transform: capitalize; }
 .signal-list dd span { color: var(--muted); }
+.signal-category-title { margin-top: 13px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 11px; font-weight: 700; color: var(--muted); }
+.signal-categories { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.signal-category { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 9px; background: #f5eee9; font-size: 11px; }
+.signal-category strong { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.signal-category-empty { margin-top: 6px; color: var(--muted); font-size: 11px; }
 .signal-context { padding-left: 18px; margin: 0; color: var(--muted); font-size: 12px; }
 .signal-context li + li { margin-top: 5px; }
 .signal-context-details { padding: 8px 2px; color: var(--muted); font-size: 12px; }
@@ -155,3 +160,43 @@ html, body, #root {
 .mode-tabs { display: flex; background: #e9dacf; border-radius: 12px; padding: 4px; margin-bottom: 14px; }
 .mode-tab { flex: 1; padding: 7px; text-align: center; border-radius: 9px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; background: transparent; color: var(--muted); transition: background 0.15s, color 0.15s; }
 .mode-tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(50, 35, 24, 0.12); }
+
+/* Dashboard study window clock, adapted to the warm extension palette. */
+.timer-clock-layout { display: grid; justify-items: center; gap: 8px; padding: 2px 0 12px; }
+.timer-clock-dial { width: 100%; max-width: 300px; }
+.day-clock { width: 100%; height: auto; display: block; touch-action: none; user-select: none; }
+.day-clock-face { fill: #fffdfb; }
+.day-clock-track { fill: none; stroke: #eaded4; stroke-width: 28; }
+.day-clock-hour { stroke: #b7a79b; stroke-width: 1.5; stroke-linecap: round; }
+.day-clock-arc { fill: none; stroke: var(--indigo); stroke-width: 28; stroke-linecap: round; }
+.day-clock-arc { cursor: grab; pointer-events: stroke; }
+.day-clock-arc:active { cursor: grabbing; }
+.day-clock-arc:focus-visible { stroke-width: 34; outline: none; }
+.day-clock-range-grip { pointer-events: all; cursor: grab; }
+.day-clock-range-grip circle { fill: #ff6d3d; stroke: #fffdfb; stroke-width: 2; }
+.day-clock-range-grip path { fill: none; stroke: #211c19; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.day-clock-range-grip:active { cursor: grabbing; }
+.day-clock-tick { stroke: rgba(120, 110, 103, 0.72); stroke-width: 1.5; stroke-linecap: round; }
+.day-clock-label { fill: #786e67; font-size: 12px; font-weight: 600; text-anchor: middle; dominant-baseline: middle; }
+.day-clock-label.is-strong { fill: #211c19; }
+.day-clock-moon { fill: #c85a38; }
+.day-clock-sun { fill: none; stroke: #cc8731; stroke-width: 1.6; stroke-linecap: round; }
+.day-clock-sun circle { fill: #cc8731; stroke: none; }
+.day-clock-handle { cursor: grab; outline: none; }
+.day-clock-handle circle { fill: var(--indigo); stroke: #fffdfb; stroke-width: 3; }
+.day-clock-handle:focus-visible circle { stroke: #211c19; stroke-width: 3; }
+.day-clock-handle:active { cursor: grabbing; }
+.day-clock.is-locked .day-clock-handle,
+.day-clock.is-locked .day-clock-handle:active { cursor: default; }
+.timer-clock-details { width: 100%; display: grid; gap: 10px; justify-items: center; }
+.timer-clock-times { display: flex; justify-content: center; gap: 36px; text-align: center; }
+.timer-clock-times div { display: grid; gap: 1px; }
+.timer-clock-times span { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.timer-clock-times strong { font-size: 13px; }
+.timer-clock-details .ring-time { font-size: 28px; }
+.progress-summary { margin-top: 16px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 12px; background: #f5eee9; }
+.progress-summary-heading { margin-bottom: 7px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.progress-summary-stats { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; }
+.progress-summary-stats strong { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+.progress-summary-empty { margin: 0; color: var(--muted); font-size: 11px; }
+.progress-summary-link { display: block; margin-top: 7px; padding: 0; border: 0; background: transparent; color: #b94b2b; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }

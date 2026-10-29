@@ -77,7 +77,12 @@ export function decideIntervention(state, history = [], now = Date.now(), learni
   }
 
   const previous = lastNudge(rows);
-  if (previous && now - previous.at < 10 * MINUTE) return null;
+  if (previous) {
+    const ignored = previous.action === 'ignored';
+    const ladderComplete = (previous.level || 1) >= 3;
+    const cooldown = ignored ? (ladderComplete ? 5 * MINUTE : MINUTE) : 2 * MINUTE;
+    if (now - previous.at < cooldown) return null;
+  }
 
   if (ctx.name === 'depleted') return { level: 1, kind: 'rest' };
 

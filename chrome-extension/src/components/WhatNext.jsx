@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { api } from '../utils/api.js'
 import { get, set } from '../utils/storage.js'
+import ProgressSummary from './ProgressSummary.jsx'
 
 const ENERGY_LABELS = { 1: '💀 Exhausted', 2: '😴 Low', 3: '😐 Okay', 4: '⚡ Good', 5: '🔥 Peak' }
 const STRESS_LABELS = { 1: 'Very low', 2: 'Low', 3: 'Some', 4: 'High', 5: 'Very high' }
@@ -190,6 +191,7 @@ export default function WhatNext({ taskRevision = 0 }) {
           <div className="text-sm">No pending tasks. Add one below.</div>
         </div>
       )}
+      <ProgressSummary />
     </div>
   )
 }

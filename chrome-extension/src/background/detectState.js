@@ -1,4 +1,4 @@
-const FIVE_MIN_MS = 5 * 60 * 1000;
+const IDLE_NUDGE_MS = 10 * 1000;
 const DWELL_LIMIT_MS = 25000;
 
 function share(categoryMs, key) {
@@ -40,7 +40,7 @@ export function detectState(snapshot, ctx = {}) {
   const frozen = !audible
     && !readingMode
     && (cat === 'work' || cat === 'other')
-    && focusedIdleMs >= FIVE_MIN_MS;
+    && focusedIdleMs >= IDLE_NUDGE_MS;
   const avoidance = passiveShare >= 0.6 && deadlineNear && switchesPerMin < 2;
   const depleted = (stressHigh || (energyLevel != null && energyLevel <= 2))
     && (frozen || thrashing || workShare < 0.15);
@@ -71,7 +71,7 @@ export function detectState(snapshot, ctx = {}) {
   }
 
   function frozenConfidence() {
-    const extra = (focusedIdleMs - FIVE_MIN_MS) / FIVE_MIN_MS;
+    const extra = (focusedIdleMs - IDLE_NUDGE_MS) / IDLE_NUDGE_MS;
     let score = 0.5 + Math.min(0.35, Math.max(0, extra) * 0.25);
     if (cat === 'work') score += 0.12;
     return clamp01(score);

@@ -3,7 +3,7 @@
   "name": "Doorway",
   "version": "1.0.0",
   "description": "Doorway — one small step at a time. Tasks, focus timer, and academic planning in your browser.",
-  "permissions": ["storage", "alarms", "notifications", "declarativeNetRequest", "tabs", "idle", "identity", "scripting"],
+  "permissions": ["storage", "alarms", "notifications", "declarativeNetRequest", "tabs", "idle", "identity", "scripting", "offscreen"],
   "host_permissions": [
     "http://localhost:4000/*",
     "https://*.railway.app/*",

@@ -3,6 +3,7 @@ import { get, set, remove } from '../utils/storage.js'
 
 export default function NudgeSettings() {
   const [enabled, setEnabled] = useState(true)
+  const [voice, setVoice] = useState(false)
   const [start, setStart] = useState('22:00')
   const [end, setEnd] = useState('07:00')
   const [quietOn, setQuietOn] = useState(false)
@@ -11,8 +12,9 @@ export default function NudgeSettings() {
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
-    get(['doorway_nudgesEnabled', 'doorway_quietHours', 'doorway_readingMode', 'doorway_syncInsights']).then((data) => {
+    get(['doorway_nudgesEnabled', 'doorway_nudgeVoice', 'doorway_quietHours', 'doorway_readingMode', 'doorway_syncInsights']).then((data) => {
       setEnabled(data.doorway_nudgesEnabled !== false)
+      setVoice(data.doorway_nudgeVoice === true)
       if (data.doorway_quietHours?.start) {
         setQuietOn(true)
         setStart(data.doorway_quietHours.start)
@@ -26,6 +28,11 @@ export default function NudgeSettings() {
   function saveEnabled(value) {
     setEnabled(value)
     set({ doorway_nudgesEnabled: value })
+  }
+
+  function saveVoice(value) {
+    setVoice(value)
+    set({ doorway_nudgeVoice: value })
   }
 
   function saveQuiet(nextOn, nextStart, nextEnd) {
@@ -68,6 +75,10 @@ export default function NudgeSettings() {
         <label className="label">
           <input type="checkbox" checked={enabled} onChange={(e) => saveEnabled(e.target.checked)} /> Nudges on
         </label>
+        <label className="label">
+          <input type="checkbox" checked={voice} onChange={(e) => saveVoice(e.target.checked)} /> Speak nudges aloud
+        </label>
+        <p className="text-muted">Uses your signed-in account to speak short nudge prompts with ElevenLabs. Only the prompt text is sent for speech.</p>
       </div>
       <div className="card">
         <div className="card-title">Quiet hours</div>

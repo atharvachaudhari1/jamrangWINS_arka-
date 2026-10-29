@@ -9,8 +9,23 @@ const STATE_LABELS = {
   uncertain: 'Pattern is uncertain',
 }
 
+const TAB_CATEGORIES = [
+  ['work', 'Study & work'],
+  ['passive', 'Content'],
+  ['comms', 'Communication'],
+  ['other', 'Other'],
+]
+
+const CATEGORY_LABELS = Object.fromEntries(TAB_CATEGORIES.map(([key, label]) => [key, label]))
+
 function minutes(ms) {
   return Math.floor((ms || 0) / 60000)
+}
+
+function duration(ms) {
+  const seconds = Math.floor((ms || 0) / 1000)
+  const mins = Math.floor(seconds / 60)
+  return mins ? `${mins}m ${seconds % 60}s` : `${seconds}s`
 }
 
 export default function SignalMonitor() {
@@ -47,7 +62,8 @@ export default function SignalMonitor() {
   const currentState = state?.state || 'ok'
   const reasons = state?.reasons || []
   const categoryMs = snapshot.categoryMs || {}
-  const currentCategory = snapshot.current?.cat || 'unknown'
+  const currentCategory = CATEGORY_LABELS[snapshot.current?.cat] || 'Other'
+  const categoryTotal = TAB_CATEGORIES.reduce((sum, [key]) => sum + (categoryMs[key] || 0), 0)
 
   return (
     <section aria-labelledby="signal-title">
@@ -71,6 +87,17 @@ export default function SignalMonitor() {
           <div><dt>Current tab category</dt><dd>{currentCategory}</dd></div>
           <div><dt>Idle time detected</dt><dd>{minutes(snapshot.focusedIdleMs)} min</dd></div>
         </dl>
+        <div className="signal-category-title">Tab categories · last 5 minutes</div>
+        {categoryTotal > 0 ? (
+          <div className="signal-categories" aria-label="Time by tab category in the last five minutes">
+            {TAB_CATEGORIES.map(([key, label]) => (
+              <div className="signal-category" key={key}>
+                <span>{label}</span>
+                <strong>{duration(categoryMs[key])}</strong>
+              </div>
+            ))}
+          </div>
+        ) : <p className="signal-category-empty">No recent tab activity to group yet.</p>}
       </div>
 
       <details className="signal-context-details">

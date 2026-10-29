@@ -2820,6 +2820,13 @@ textarea:focus-visible {
 .day-clock-track { fill: none; stroke: #3a3a3c; stroke-width: 28; }
 .day-clock-hour { stroke: #636366; stroke-width: 1.5; stroke-linecap: round; }
 .day-clock-arc { fill: none; stroke: #ff9f0a; stroke-width: 28; stroke-linecap: round; }
+.day-clock-arc { cursor: grab; pointer-events: stroke; }
+.day-clock-arc:active { cursor: grabbing; }
+.day-clock-arc:focus-visible { stroke-width: 34; outline: none; }
+.day-clock-range-grip { pointer-events: all; cursor: grab; }
+.day-clock-range-grip circle { fill: #ff9f0a; stroke: #1c1c1e; stroke-width: 2; }
+.day-clock-range-grip path { fill: none; stroke: #1c1c1e; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.day-clock-range-grip:active { cursor: grabbing; }
 .day-clock-tick { stroke: rgba(255, 255, 255, 0.72); stroke-width: 1.5; stroke-linecap: round; }
 .day-clock-label { fill: #aeaeb2; font-size: 12px; font-weight: 600; text-anchor: middle; dominant-baseline: middle; }
 .day-clock-label.is-strong { fill: #f5f5f7; }

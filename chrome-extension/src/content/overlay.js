@@ -1,10 +1,34 @@
 (() => {
-if (document.getElementById('doorway-overlay-root')) return;
+let root = document.getElementById('doorway-overlay-root');
+if (!root) {
+  root = document.createElement('div');
+  root.id = 'doorway-overlay-root';
+  document.documentElement.appendChild(root);
+}
+if (root.dataset.doorwayOverlayReady === 'true') return;
+root.dataset.doorwayOverlayReady = 'true';
+const shadow = root.shadowRoot || root.attachShadow({ mode: 'open' });
 
-const root = document.createElement('div');
-root.id = 'doorway-overlay-root';
-const shadow = root.attachShadow({ mode: 'open' });
-document.documentElement.appendChild(root);
+let pageIdleTimer = 0;
+let pageIsIdle = false;
+function resetPageIdle() {
+  clearTimeout(pageIdleTimer);
+  if (pageIsIdle) {
+    pageIsIdle = false;
+    chrome.runtime.sendMessage({ type: 'doorway:pageActive' }).catch(() => {});
+  }
+  if (document.visibilityState !== 'visible') return;
+  pageIdleTimer = setTimeout(() => {
+    if (document.visibilityState !== 'visible') return;
+    pageIsIdle = true;
+    chrome.runtime.sendMessage({ type: 'doorway:pageIdle' }).catch(() => {});
+  }, 10_000);
+}
+['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach((event) => {
+  window.addEventListener(event, resetPageIdle, { passive: true });
+});
+document.addEventListener('visibilitychange', resetPageIdle);
+resetPageIdle();
 
 const style = document.createElement('style');
 style.textContent = `
@@ -63,7 +87,7 @@ style.textContent = `
   .clock { font-size: 28px; letter-spacing: 0.04em; margin: 4px 0 10px; }
   .tone { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); margin-top: 8px; }
 `;
-shadow.appendChild(style);
+if (!shadow.querySelector('style')) shadow.appendChild(style);
 
 let hideTimer = 0;
 let node = null;
@@ -294,12 +318,15 @@ function softBlock() {
   });
 }
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'doorway:softBlock') {
     softBlock();
-    return;
+    sendResponse({ ok: true });
+    return false;
   }
-  if (message?.type !== 'doorway:nudge') return;
+  if (message?.type !== 'doorway:nudge') return false;
   card(message);
+  sendResponse({ ok: true });
+  return false;
 });
 })();

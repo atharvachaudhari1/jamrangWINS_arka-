@@ -1,4 +1,4 @@
-import { getSnapshot } from './signals.js';
+import { getSnapshot, seedIdleState } from './signals.js';
 import { detectState } from './detectState.js';
 import { onOutcomeTick } from './outcomeTracker.js';
 import { getApiUrl, getToken } from '../utils/storage.js';
@@ -74,7 +74,7 @@ function energyFrom(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-async function tick() {
+async function tick(confirmIdle = false) {
   const now = Date.now();
   const snapshot = await getSnapshot();
   const deadlineNear = await refreshDeadline(now);
@@ -105,7 +105,7 @@ async function tick() {
 
   if (detected.state === 'ok') {
     published = { state: 'ok', confidence: detected.confidence, reasons: detected.reasons, at: now };
-  } else if (pending?.state === detected.state) {
+  } else if (pending?.state === detected.state || (confirmIdle && detected.state === 'frozen')) {
     published = { state: detected.state, confidence: detected.confidence, reasons: detected.reasons, at: now };
   } else if (!previous || previous.state === 'ok') {
     published = { state: 'ok', confidence: 1, reasons: [], at: now };
@@ -122,12 +122,24 @@ async function tick() {
 
 export function startStateLoop() {
   chrome.alarms.create(ALARM, { periodInMinutes: 1 });
-  tick().catch(() => {});
+  seedIdleState().then((type) => tick(type === 'idle')).catch(() => {});
+  chrome.idle.onStateChanged.addListener((state) => {
+    if (state === 'idle') tick(true).catch(() => {});
+  });
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === ALARM) tick().catch(() => {});
   });
 
+  chrome.tabs.onActivated.addListener(() => tick().catch(() => {}));
+  chrome.tabs.onUpdated.addListener((_tabId, change) => {
+    if (change.status === 'complete') tick().catch(() => {});
+  });
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 'doorway:pageIdle' || msg?.type === 'doorway:pageActive') {
+      tick(msg.type === 'doorway:pageIdle').catch(() => {});
+      return false;
+    }
     if (msg?.type === 'doorway:getState') {
       chrome.storage.session.get(STATE_KEY).then((data) => sendResponse(data[STATE_KEY] || null));
       return true;

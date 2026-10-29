@@ -78,6 +78,18 @@ function clampStart(end, raw, minSpan, maxSpan) {
   return (end - nearerBound(clockwise(raw, end), minSpan, maxSpan) + 1440) % 1440;
 }
 
+function signedMinutes(from, to) {
+  return ((to - from + 720 + 1440) % 1440) - 720;
+}
+
+function moveWindow(start, end, delta) {
+  const snappedDelta = Math.round(delta / STEP) * STEP;
+  return {
+    startMinutes: (start + snappedDelta + 1440) % 1440,
+    endMinutes: (end + snappedDelta + 1440) % 1440,
+  };
+}
+
 function arcPath(start, end) {
   const dist = clockwise(start, end);
   const [x1, y1] = point(start, ARC_R);
@@ -154,15 +166,23 @@ export default function DayClock({
     if (locked) return;
     const handle = event.target?.closest?.("[data-handle]");
     const which = handle?.dataset.handle;
-    if (!which || !svgRef.current) return;
-    drag.current = which;
+    const range = event.target?.closest?.("[data-range]");
+    if ((!which && !range) || !svgRef.current) return;
+    drag.current = which
+      ? { which }
+      : { which: "range", pointerStart: minutesFromPointer(event, svgRef.current), start: startMinutes, end: endMinutes };
     svgRef.current.setPointerCapture(event.pointerId);
-    handle.focus?.();
+    (handle || range).focus?.();
   }
 
   function onPointerMove(event) {
     if (!drag.current || !svgRef.current) return;
-    apply(drag.current, minutesFromPointer(event, svgRef.current));
+    const pointerMinutes = minutesFromPointer(event, svgRef.current);
+    if (drag.current.which === "range") {
+      onChange(moveWindow(drag.current.start, drag.current.end, signedMinutes(drag.current.pointerStart, pointerMinutes)));
+    } else {
+      apply(drag.current.which, pointerMinutes);
+    }
   }
 
   function onPointerUp() {
@@ -172,6 +192,13 @@ export default function DayClock({
   function onKeyDown(event) {
     if (locked) return;
     const which = event.target?.dataset?.handle;
+    if (event.target?.dataset?.range) {
+      const dir = event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 0;
+      if (!dir) return;
+      event.preventDefault();
+      onChange(moveWindow(startMinutes, endMinutes, dir * (event.shiftKey ? 30 : STEP)));
+      return;
+    }
     if (!which) return;
     const dir = event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 0;
     if (!dir) return;
@@ -182,6 +209,7 @@ export default function DayClock({
   }
 
   const span = clockwise(startMinutes, endMinutes) || minSpan;
+  const [gripX, gripY] = point((startMinutes + span / 2) % 1440, ARC_R + 28);
 
   return (
     <svg
@@ -203,7 +231,18 @@ export default function DayClock({
         const [x2, y2] = point(hour * 60, hour % 2 === 0 ? ARC_R - 24 : ARC_R - 20);
         return <line key={hour} className="day-clock-hour" x1={x1} y1={y1} x2={x2} y2={y2} />;
       })}
-      <path className="day-clock-arc" d={arcPath(startMinutes, endMinutes)} />
+      <path
+        className="day-clock-arc"
+        data-range="window"
+        d={arcPath(startMinutes, endMinutes)}
+        role="button"
+        tabIndex={locked ? -1 : 0}
+        aria-label={`Move entire ${caption} window, ${formatClock(startMinutes)} to ${formatClock(endMinutes)}`}
+      />
+      <g className="day-clock-range-grip" data-range="window" aria-hidden="true">
+        <circle cx={gripX} cy={gripY} r="9" />
+        <path d={`M ${gripX - 4} ${gripY}h8m-3-3 3 3-3 3m-2-6-3 3 3 3`} />
+      </g>
       {ticks(startMinutes, endMinutes)}
       {MARKS.map(([mins, label, strong]) => {
         const [x, y] = point(mins, 146);

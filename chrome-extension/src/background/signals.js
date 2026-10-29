@@ -3,12 +3,12 @@ import { clearUploadedInsights } from './uploader.js';
 const STORE_KEY = 'doorway_signals';
 const WINDOW_MS = 5 * 60 * 1000;
 const MAX_EVENTS = 300;
-const IDLE_SECONDS = 60;
+const IDLE_SECONDS = 15;
 
 const CATEGORY_RULES = [
-  ['passive', ['youtube.com', 'netflix.com', 'instagram.com', 'facebook.com', 'x.com', 'twitter.com', 'reddit.com', 'tiktok.com', 'twitch.tv', 'primevideo.com']],
+  ['passive', ['youtube.com', 'netflix.com', 'instagram.com', 'facebook.com', 'x.com', 'twitter.com', 'reddit.com', 'tiktok.com', 'twitch.tv', 'primevideo.com', 'disneyplus.com', 'pinterest.com']],
   ['comms', ['mail.google.com', 'outlook.live.com', 'outlook.office.com', 'slack.com', 'discord.com', 'web.whatsapp.com', 'teams.microsoft.com', 'telegram.org']],
-  ['work', ['docs.google.com', 'drive.google.com', 'github.com', 'overleaf.com', 'notion.so', 'classroom.google.com', 'moodle', 'nptel.ac.in', 'localhost']]
+  ['work', ['docs.google.com', 'drive.google.com', 'github.com', 'overleaf.com', 'notion.so', 'classroom.google.com', 'moodle', 'nptel.ac.in', 'localhost', 'coursera.org', 'edx.org', 'khanacademy.org', 'quizlet.com', 'udemy.com', 'instructure.com', 'blackboard.com', 'schoology.com', 'studocu.com', 'geeksforgeeks.org', 'w3schools.com', 'leetcode.com', 'scholar.google.com']]
 ];
 
 export function hostOf(url) {
@@ -65,8 +65,14 @@ export function computeSnapshot(events, now, ctx = {}) {
   const revisitLoop = switches.length >= 6 && counts.length <= 3;
 
   const lastIdle = [...events].reverse().find((e) => e.type === 'idle' || e.type === 'active');
+  const lastPageIdle = [...events].reverse().find((e) => e.type === 'page-idle' || e.type === 'page-active');
+  const idleSignal = !lastPageIdle || (lastIdle && lastIdle.t > lastPageIdle.t) ? lastIdle : lastPageIdle;
   const focusedIdleMs =
-    lastIdle && lastIdle.type === 'idle' ? Math.max(0, now - (lastIdle.t - IDLE_SECONDS * 1000)) : 0;
+    idleSignal?.type === 'page-idle'
+      ? Math.max(0, now - idleSignal.t)
+      : idleSignal?.type === 'idle'
+        ? Math.max(0, now - (idleSignal.t - IDLE_SECONDS * 1000))
+        : 0;
 
   return {
     at: now,
@@ -134,6 +140,13 @@ export async function getSnapshot() {
   return computeSnapshot(events, Date.now(), ctx);
 }
 
+export async function seedIdleState() {
+  const state = await new Promise((resolve) => chrome.idle.queryState(IDLE_SECONDS, resolve));
+  const type = state === 'idle' || state === 'locked' ? 'idle' : 'active';
+  await pushEvent({ t: Date.now(), type });
+  return type;
+}
+
 export async function clearSignals() {
   await Promise.all([
     locked(() => chrome.storage.session.remove(STORE_KEY)),
@@ -167,6 +180,12 @@ export function startSignals() {
   });
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 'doorway:pageIdle' || msg?.type === 'doorway:pageActive') {
+      const idle = msg.type === 'doorway:pageIdle';
+      pushEvent({ t: Date.now() - (idle ? 10_000 : 0), type: idle ? 'page-idle' : 'page-active' })
+        .then(() => sendResponse({ ok: true }));
+      return true;
+    }
     if (msg?.type === 'doorway:getSignals') {
       getSnapshot().then(sendResponse);
       return true;

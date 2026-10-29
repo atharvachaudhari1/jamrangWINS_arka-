@@ -120,6 +120,40 @@ router.get('/insights', auth, async (req, res) => {
     outcome: event.nudge?.outcome,
     secondsToAction: event.nudge?.secondsToAction,
   }));
+  const dailyProgress = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (6 - index));
+    const key = date.toISOString().slice(0, 10);
+    return [key, {
+      date: key,
+      observedMinutes: 0,
+      idleMinutes: 0,
+      switches: 0,
+      stuckMinutes: 0,
+      nudgeOutcomes: 0,
+      started: 0,
+      rested: 0,
+    }];
+  });
+  const progressByDate = new Map(dailyProgress);
+  signalEvents.forEach((event) => {
+    const day = progressByDate.get(event.signals?.date);
+    if (!day) return;
+    const signal = event.signals;
+    day.observedMinutes += signal.observedMinutes || 0;
+    day.idleMinutes += signal.idleMinutes || 0;
+    day.switches += signal.switches || 0;
+    day.stuckMinutes += (signal.frozenMinutes || 0) + (signal.thrashingMinutes || 0) + (signal.avoidanceMinutes || 0) + (signal.depletedMinutes || 0);
+  });
+  events.forEach((event) => {
+    const key = new Date(event.createdAt).toISOString().slice(0, 10);
+    const day = progressByDate.get(key);
+    if (!day) return;
+    day.nudgeOutcomes += 1;
+    if (event.nudge?.outcome === 'acted') day.started += 1;
+    if (event.nudge?.outcome === 'rested') day.rested += 1;
+  });
   const shown = rows.length;
   const currentSignals = signalEvents.filter((event) => new Date(`${event.signals.date}T00:00:00`).getTime() >= now - 7 * 24 * 60 * 60 * 1000);
   const previousSignals = signalEvents.filter((event) => !currentSignals.includes(event));
@@ -148,6 +182,7 @@ router.get('/insights', auth, async (req, res) => {
   res.json({
     shown,
     signalSummary: { current: signalTotals(currentSignals), previous: signalTotals(previousSignals) },
+    dailyProgress: dailyProgress.map(([, day]) => day),
     startedCount: rows.filter((row) => row.outcome === 'acted').length,
     acceptedPct: percent(rows.filter((row) => row.action === 'accepted').length, shown),
     dismissedPct: percent(rows.filter((row) => row.action === 'dismissed').length, shown),

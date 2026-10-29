@@ -174,6 +174,8 @@ export default function Dashboard() {
     : 0;
   const signalNow = browserInsights?.signalSummary?.current;
   const signalBefore = browserInsights?.signalSummary?.previous;
+  const browserDays = browserInsights?.dailyProgress || [];
+  const hasBrowserDailyData = browserDays.some((day) => day.observedMinutes > 0 || day.nudgeOutcomes > 0);
   const stuckShare = signalNow?.observedMinutes
     ? Math.round((signalNow.stuckMinutes / signalNow.observedMinutes) * 100)
     : null;
@@ -212,17 +214,56 @@ export default function Dashboard() {
             <div style={{ marginTop: 6 }}>These are rough browser signals, not a diagnosis. {browserInsights.line}</div>
           </div>
         )}
-        {(signalNow?.days || 0) > 0 && (
+        {((signalNow?.days || 0) > 0 || hasBrowserDailyData) && (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-            <div style={{ fontWeight: 600 }}>Browser patterns · estimate</div>
-            <div className="page-subtitle" style={{ marginTop: 4 }}>
-              {stuckShare == null ? "Collecting enough browser activity to show a trend." : `Stuck signals appeared in about ${stuckShare}% of observed minutes this week.`}
-              {previousStuckShare != null && stuckShare != null && ` Last week: ${previousStuckShare}%.`}
-            </div>
-            <div className="page-subtitle" style={{ marginTop: 4 }}>
-              {signalNow.idleMinutes} estimated idle min · {signalNow.switches} tab switches · {signalNow.observedMinutes} observed min
-            </div>
-            <div className="page-subtitle" style={{ marginTop: 4 }}>These are rough patterns, not a measure of effort or a diagnosis.</div>
+            {(signalNow?.days || 0) > 0 && <>
+              <div style={{ fontWeight: 600 }}>Browser patterns · estimate</div>
+              <div className="page-subtitle" style={{ marginTop: 4 }}>
+                {stuckShare == null ? "Collecting enough browser activity to show a trend." : `Stuck signals appeared in about ${stuckShare}% of observed minutes this week.`}
+                {previousStuckShare != null && stuckShare != null && ` Last week: ${previousStuckShare}%.`}
+              </div>
+              <div className="page-subtitle" style={{ marginTop: 4 }}>
+                {signalNow.idleMinutes} estimated idle min · {signalNow.switches} tab switches · {signalNow.observedMinutes} observed min
+              </div>
+              <div className="page-subtitle" style={{ marginTop: 4 }}>These are rough patterns, not a measure of effort or a diagnosis.</div>
+            </>}
+            {hasBrowserDailyData && (
+              <div className="progress-daily-wrap">
+                <div className="progress-daily-title">Day by day · last 7 days</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="import-preview progress-daily-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Day</th>
+                        <th scope="col">Observed</th>
+                        <th scope="col">Idle</th>
+                        <th scope="col">Stuck estimate</th>
+                        <th scope="col">Tab changes</th>
+                        <th scope="col">First steps</th>
+                        <th scope="col">Rest resets</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {browserDays.map((day) => {
+                        const [year, month, date] = day.date.split("-").map(Number);
+                        const label = new Date(year, month - 1, date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+                        return (
+                          <tr key={day.date}>
+                            <th scope="row">{label}</th>
+                            <td>{day.observedMinutes}m</td>
+                            <td>{day.idleMinutes}m</td>
+                            <td>{day.stuckMinutes}m</td>
+                            <td>{day.switches}</td>
+                            <td>{day.started}</td>
+                            <td>{day.rested}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
