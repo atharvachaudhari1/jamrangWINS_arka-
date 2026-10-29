@@ -1,12 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
 import api from "../services/api";
 import { setFocusActive, getDistractionCount, resetDistractionCount } from "./FocusOverlay";
 import Affirmations from "./Affirmations";
 import ShieldStatusCard from "./focus-shield/ShieldStatusCard";
 import { useBlockingStore } from "../stores/blockingStore";
+import DayClock, { clockwise, formatClock, formatSpan } from "./DayClock";
 
-const CIRCUMFERENCE = 2 * Math.PI * 90;
+function minutesNow() {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  return Math.round(mins / 5) * 5 % 1440;
+}
 
 const MODES = [
   { id: "pomodoro", label: "Pomodoro", work: 25, brk: 5 },
@@ -21,6 +27,7 @@ export default function FocusTimer() {
   const [breakMins, setBreakMins] = useState(5);
   const [isWork, setIsWork] = useState(true);
   const [seconds, setSeconds] = useState(25 * 60);
+  const [windowStart, setWindowStart] = useState(minutesNow);
   const [active, setActive] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
   const [reward, setReward] = useState(null);
@@ -29,13 +36,13 @@ export default function FocusTimer() {
   const [tasks, setTasks] = useState([]);
   const [linkedTaskId, setLinkedTaskId] = useState("");
   const [tasksLoading, setTasksLoading] = useState(false);
+  const autoStartedRef = useRef(false);
 
   const affirmRef = useRef();
   const intervalRef = useRef();
 
   const totalSecs = (isWork ? workMins : breakMins) * 60;
-  const progress = totalSecs > 0 ? 1 - seconds / totalSecs : 0;
-  const dashOffset = CIRCUMFERENCE * (1 - progress);
+  const windowEnd = (windowStart + (isWork ? workMins : breakMins)) % 1440;
 
   const linkedTask = tasks.find((t) => t._id === linkedTaskId) || null;
 
@@ -46,9 +53,9 @@ export default function FocusTimer() {
       if (command === "pause") { setActive(false); setFocusActive(false); return; }
       if (command === "reset") { reset(); return; }
       if (command === "deep") {
-        setModeIdx(1); setWorkMins(50); setBreakMins(10); setIsWork(true); setSeconds(50 * 60); setActive(true); return;
+        setModeIdx(1); setWorkMins(50); setBreakMins(10); setIsWork(true); setWindowStart(minutesNow()); setSeconds(50 * 60); setActive(true); return;
       }
-      setModeIdx(0); setWorkMins(25); setBreakMins(5); setIsWork(true); setSeconds(25 * 60); setActive(true);
+      setModeIdx(0); setWorkMins(25); setBreakMins(5); setIsWork(true); setWindowStart(minutesNow()); setSeconds(25 * 60); setActive(true);
     }
     const queued = sessionStorage.getItem("doorway-focus");
     if (queued) { sessionStorage.removeItem("doorway-focus"); run(queued); }
@@ -58,8 +65,9 @@ export default function FocusTimer() {
   }, []);
 
   useEffect(() => {
-    if (location.state?.taskId) setLinkedTaskId(location.state.taskId);
-  }, [location.state]);
+    const taskId = new URLSearchParams(location.search).get("taskId") || location.state?.taskId;
+    if (taskId) setLinkedTaskId(taskId);
+  }, [location.search, location.state]);
 
   useEffect(() => {
     setShieldLoading(true);
@@ -83,9 +91,24 @@ export default function FocusTimer() {
     if (m.id !== "custom") {
       setWorkMins(m.work);
       setBreakMins(m.brk);
+      setWindowStart(minutesNow());
       reset(m.work, m.brk);
     }
   }, [modeIdx]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("autostart") !== "1" || autoStartedRef.current) return;
+    const requested = Number.parseInt(params.get("minutes") || "2", 10);
+    const minutes = Number.isFinite(requested) ? Math.max(1, Math.min(120, requested)) : 2;
+    autoStartedRef.current = true;
+    setWorkMins(minutes);
+    setBreakMins(5);
+    setIsWork(true);
+    setWindowStart(minutesNow());
+    setSeconds(minutes * 60);
+    setActive(true);
+  }, [location.search]);
 
   useEffect(() => {
     if (active && seconds > 0) {
@@ -157,8 +180,18 @@ export default function FocusTimer() {
     setActive(false);
     setFocusActive(false);
     const next = !isWork;
+    setWindowStart(next ? minutesNow() : (windowStart + workMins) % 1440);
     setIsWork(next);
     setSeconds((next ? workMins : breakMins) * 60);
+  }
+
+  function onWindowChange({ startMinutes, endMinutes }) {
+    if (active || seconds !== totalSecs) return;
+    const span = Math.min(180, Math.max(5, clockwise(startMinutes, endMinutes)));
+    setWindowStart(startMinutes);
+    if (isWork) setWorkMins(span);
+    else setBreakMins(span);
+    setSeconds(span * 60);
   }
 
   function fmt(s) {
@@ -182,17 +215,32 @@ export default function FocusTimer() {
       <div className="grid-main">
         {/* ── Timer card ────────────────────────────────── */}
         <div className="card">
-          <div className="mode-tabs">
-            {MODES.map((m, i) => (
-              <button
-                key={m.id}
-                className={`mode-tab ${modeIdx === i ? "active" : ""}`}
-                onClick={() => setModeIdx(i)}
-                aria-pressed={modeIdx === i}
-              >
-                {m.label}
-              </button>
-            ))}
+          <div className="energy-segmented-track mb-4" role="tablist" aria-label="Timer mode">
+            {MODES.map((m, i) => {
+              const isSelected = modeIdx === i;
+              return (
+                <motion.button
+                  key={m.id}
+                  type="button"
+                  className={`energy-segment-btn ${isSelected ? "selected" : ""}`}
+                  onClick={() => setModeIdx(i)}
+                  whileTap={{ scale: 0.96 }}
+                  role="tab"
+                  aria-selected={isSelected}
+                >
+                  {isSelected && (
+                    <motion.div
+                      layoutId="timer-mode-pill"
+                      className="energy-segmented-pill-bg"
+                      transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+                    />
+                  )}
+                  <span className="energy-btn-label" style={{ fontWeight: isSelected ? 600 : 500 }}>
+                    {m.label} ({m.work}m)
+                  </span>
+                </motion.button>
+              );
+            })}
           </div>
 
           {/* Task picker — links session to a task */}
@@ -221,8 +269,12 @@ export default function FocusTimer() {
               </select>
             )}
             {linkedTask && (
-              <div className="linked-task-badge">
-                <span>🎯</span>
+              <div className="linked-task-badge" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <circle cx="12" cy="12" r="6" />
+                  <circle cx="12" cy="12" r="2" fill="currentColor" />
+                </svg>
                 <span>{linkedTask.title}</span>
                 {linkedTask.estimateMins && (
                   <span className="text-xs text-muted">~{linkedTask.estimateMins}m</span>
@@ -231,36 +283,90 @@ export default function FocusTimer() {
             )}
           </div>
 
-          {/* Ring Timer */}
-          <div className="ring-container">
-            <svg className="ring-svg" width="220" height="220" viewBox="0 0 220 220" aria-hidden="true">
-              <circle className="ring-track" cx="110" cy="110" r="90" />
-              <circle
-                className={`ring-progress ${isWork ? "work" : "brk"}`}
-                cx="110" cy="110" r="90"
-                strokeDasharray={CIRCUMFERENCE}
-                strokeDashoffset={dashOffset}
+          <div className="study-clock">
+            <div className="study-clock-dial">
+              <DayClock
+                startMinutes={windowStart}
+                endMinutes={windowEnd}
+                onChange={onWindowChange}
+                locked={active || seconds !== totalSecs}
+                minSpan={5}
+                maxSpan={180}
+                startLabel={isWork ? "Focus start" : "Break start"}
+                endLabel={isWork ? "Focus end" : "Break end"}
+                caption={isWork ? "Focus session" : "Break"}
               />
-            </svg>
-            <div className="ring-text" role="timer" aria-label={`${fmt(seconds)} ${isWork ? "work" : "break"}`}>
-              <div className="ring-time">{fmt(seconds)}</div>
-              <div className="ring-label">{isWork ? "Work" : "Break"}</div>
             </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-            <button
+            <div className="study-clock-side">
+              <div className="study-clock-times">
+                <div>
+                  <div className="study-clock-kicker">Start</div>
+                  <div className="study-clock-time">{formatClock(windowStart)}</div>
+                  <div className="study-clock-when">Today</div>
+                </div>
+                <div>
+                  <div className="study-clock-kicker">End</div>
+                  <div className="study-clock-time">{formatClock(windowEnd)}</div>
+                  <div className="study-clock-when">{windowEnd < windowStart ? "Tomorrow" : "Today"}</div>
+                </div>
+              </div>
+              <div className="study-clock-duration" role="timer" aria-label={`${fmt(seconds)} ${isWork ? "focus" : "break"}`} style={{ fontVariantNumeric: "tabular-nums" }}>
+                {fmt(seconds)}
+              </div>
+              <p className="study-clock-note text-sm text-muted">
+                {isWork ? "Focus" : "Rest"} · {formatSpan(isWork ? workMins : breakMins)}. Drag the marks to change the length before you start.
+              </p>
+              <div className="today-actions">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
               className={`btn btn-lg ${active ? "btn-secondary" : "btn-primary"}`}
               onClick={toggle}
-              style={{ minWidth: 130 }}
+              style={{ minWidth: 140, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
               aria-label={active ? "Pause timer" : "Start timer"}
             >
-              {active ? "⏸ Pause" : "▶ Start"}
-            </button>
-            <button className="btn btn-ghost" onClick={() => reset()} aria-label="Reset timer">↺ Reset</button>
-            <button className="btn btn-ghost" onClick={switchPhase} aria-label="Switch phase">
-              {isWork ? "→ Break" : "→ Work"}
-            </button>
+              {active ? (
+                <>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16" rx="1.5" />
+                    <rect x="14" y="4" width="4" height="16" rx="1.5" />
+                  </svg>
+                  <span>Pause</span>
+                </>
+              ) : (
+                <>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                  <span>Start focus</span>
+                </>
+              )}
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+              className="btn btn-ghost btn-lg"
+              onClick={() => reset()}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+              aria-label="Reset timer"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              </svg>
+              <span>Reset</span>
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+              className="btn btn-ghost btn-lg"
+              onClick={switchPhase}
+              aria-label="Switch phase"
+            >
+              {isWork ? "Take Break" : "Back to Focus"}
+            </motion.button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -273,8 +379,11 @@ export default function FocusTimer() {
             </div>
             <div className="text-sm text-muted">{sessionLabel}</div>
             {sessionCount >= 2 && (
-              <div className="streak-badge" style={{ marginTop: 10, alignSelf: "flex-start" }}>
-                🔥 {sessionCount} sessions
+              <div className="streak-badge" style={{ marginTop: 10, alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+                </svg>
+                <span>{sessionCount} sessions</span>
               </div>
             )}
           </div>

@@ -3,18 +3,21 @@ import { api } from '../utils/api.js'
 import { get, set } from '../utils/storage.js'
 
 const ENERGY_LABELS = { 1: '💀 Exhausted', 2: '😴 Low', 3: '😐 Okay', 4: '⚡ Good', 5: '🔥 Peak' }
+const STRESS_LABELS = { 1: 'Very low', 2: 'Low', 3: 'Some', 4: 'High', 5: 'Very high' }
 
 export default function WhatNext({ taskRevision = 0 }) {
   const [task, setTask] = useState(null)
   const [reason, setReason] = useState('')
   const [energy, setEnergy] = useState(3)
+  const [stress, setStress] = useState(null)
   const [loading, setLoading] = useState(true)
   const [completing, setCompleting] = useState(false)
   const [mindfulness, setMindfulness] = useState(null)
 
   useEffect(() => {
-    get(['bbEnergy']).then(({ bbEnergy }) => {
+    get(['bbEnergy', 'doorway_stressLevel']).then(({ bbEnergy, doorway_stressLevel }) => {
       if (bbEnergy) setEnergy(bbEnergy)
+      if (doorway_stressLevel) setStress(doorway_stressLevel)
     })
   }, [])
 
@@ -49,6 +52,11 @@ export default function WhatNext({ taskRevision = 0 }) {
     load(e)
   }
 
+  async function changeStress(level) {
+    setStress(level)
+    await set({ doorway_stressLevel: level, doorway_stressAt: Date.now() })
+  }
+
   async function logRecommendation(type, taskId) {
     try {
       await api.post('/recommendation-events', {
@@ -65,6 +73,7 @@ export default function WhatNext({ taskRevision = 0 }) {
     setCompleting(true)
     try {
       await api.put(`/tasks/${task._id}/complete`, { energyLevel: energy })
+      chrome.runtime.sendMessage({ type: 'doorway:taskAction' })
       setTask(null)
       load()
     } catch {
@@ -74,6 +83,7 @@ export default function WhatNext({ taskRevision = 0 }) {
 
   async function startTask() {
     if (!task) return
+    chrome.runtime.sendMessage({ type: 'doorway:taskAction' })
     await logRecommendation('started', task._id)
   }
 
@@ -106,6 +116,24 @@ export default function WhatNext({ taskRevision = 0 }) {
               style={{ fontSize: 11 }}
             >
               {ENERGY_LABELS[e]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card mb-3">
+        <div className="card-title">Stress check-in</div>
+        <p className="text-sm text-muted mb-2">How stressed do you feel right now? This is your check-in, not a body measurement.</p>
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }} role="group" aria-label="Current stress level">
+          {[1, 2, 3, 4, 5].map((level) => (
+            <button
+              key={level}
+              type="button"
+              className={`btn btn-sm ${stress === level ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => changeStress(level)}
+              aria-pressed={stress === level}
+            >
+              {level} · {STRESS_LABELS[level]}
             </button>
           ))}
         </div>

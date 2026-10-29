@@ -110,8 +110,12 @@ export default function Timetable() {
     if (!file) return;
     setError("");
     setNotice("");
+    if (!/\.(csv|json)$/i.test(file.name)) {
+      setError("This upload is for weekly class schedules in CSV or JSON. For an exam timetable PDF or text file, use Import exam timetable below.");
+      return;
+    }
     if (file.size > 100 * 1024) {
-      setError("That file is larger than 100 KB. Split it into smaller files.");
+      setError("Weekly class schedule files must be 100 KB or smaller. For an exam timetable PDF or text file, use Import exam timetable below.");
       return;
     }
     try {
@@ -179,8 +183,9 @@ export default function Timetable() {
             Upload CSV or JSON
             <input type="file" accept=".csv,.json,text/csv,application/json" hidden onChange={chooseFile} />
           </label>
+          <Link className="btn btn-ghost" to="/academic-setup">Import exam timetable</Link>
         </div>
-        <p className="text-sm text-muted">CSV columns: title, day, start, end, location. Example: Biology, mon, 09:00, 10:30, Lab 2. You see a preview before anything is saved.</p>
+        <p className="text-sm text-muted">Weekly class upload accepts CSV or JSON (CSV columns: title, day, start, end, location). To import exam dates from a department timetable, use Import exam timetable. You see a preview before anything is saved.</p>
       </form>
 
       {error && <p className="today-message today-error" role="alert">{error}</p>}

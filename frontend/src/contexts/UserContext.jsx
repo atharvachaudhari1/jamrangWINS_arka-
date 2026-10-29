@@ -29,7 +29,6 @@ export function UserProvider({ children }) {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load a saved session, or open a local one while Google sign-in is not configured.
   useEffect(() => {
     const storedToken = localStorage.getItem("accessToken");
     const storedUser = localStorage.getItem("user");
@@ -42,36 +41,30 @@ export function UserProvider({ children }) {
         localStorage.removeItem("user");
         localStorage.removeItem("accessToken");
       }
-      setLoading(false);
-      return;
     }
-
-    if (import.meta.env.VITE_GOOGLE_CLIENT_ID) {
-      setLoading(false);
-      return;
-    }
-
-    api.post("/auth/local")
-      .then((data) => {
-        setToken(data.token);
-        setUser(data.user);
-        localStorage.setItem("accessToken", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    setLoading(false);
   }, []);
 
   // Push auth state to the Chrome extension (if installed) so users don't have to sign
-  // in twice — mirrors this context's token/user into chrome.storage.local via a message
-  // the extension's background service worker listens for.
+  // in twice. Retry when the portal becomes active in case the extension was installed
+  // or reloaded after the user signed in.
   useEffect(() => {
     if (loading) return; // wait for the initial localStorage read to finish
     if (token && user) {
-      sendToExtension({
-        type: 'SET_AUTH',
-        payload: { authToken: token, apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:4000/api', user },
-      });
+      const syncAuth = () => {
+        if (document.visibilityState === 'hidden') return;
+        sendToExtension({
+          type: 'SET_AUTH',
+          payload: { authToken: token, apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:4000/api', appUrl: window.location.origin, user },
+        });
+      };
+      syncAuth();
+      window.addEventListener('focus', syncAuth);
+      document.addEventListener('visibilitychange', syncAuth);
+      return () => {
+        window.removeEventListener('focus', syncAuth);
+        document.removeEventListener('visibilitychange', syncAuth);
+      };
     } else if (!token) {
       sendToExtension({ type: 'CLEAR_AUTH' });
     }
@@ -123,4 +116,3 @@ export function UserProvider({ children }) {
     </ctx.Provider>
   );
 }
-

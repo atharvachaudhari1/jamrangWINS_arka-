@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useUser } from "../contexts/UserContext";
 import SupportLink from "./SupportLink";
+import TestDataButton from "./TestDataButton";
+import { startRegistration } from "@simplewebauthn/browser";
 import api from "../services/api";
 import { APP_NAME } from "../config/brand";
 
@@ -63,7 +65,7 @@ function PrivacySection() {
   }
 
   return (
-    <section className="profile-settings-card danger-zone">
+    <section className="profile-settings-card danger-zone profile-settings-span">
       <div className="profile-settings-card-header">
         <h2 className="profile-settings-card-title">Privacy and your data</h2>
         <p className="profile-settings-card-desc">
@@ -87,8 +89,79 @@ function PrivacySection() {
   );
 }
 
+function BiometricSignIn({ email, connected, onChange }) {
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    if (!window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) return;
+    window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      .then(setReady)
+      .catch(() => setReady(false));
+  }, []);
+
+  async function connect() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const options = await api.post("/auth/webauthn/register/options");
+      const credential = await startRegistration({ optionsJSON: options });
+      const data = await api.post("/auth/webauthn/register/verify", credential);
+      onChange(Boolean(data.user?.hasPasskey));
+      setMsg({ type: "success", text: "Biometric sign-in is connected for this account." });
+    } catch (err) {
+      if (err?.name === "NotAllowedError") {
+        setMsg({ type: "error", text: "Touch ID was cancelled." });
+      } else {
+        setMsg({ type: "error", text: err.response?.data?.error || "Biometric sign-in could not be connected." });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const data = await api.delete("/auth/webauthn");
+      onChange(Boolean(data.user?.hasPasskey));
+      setMsg({ type: "success", text: "Biometric sign-in was removed from this account." });
+    } catch (err) {
+      setMsg({ type: "error", text: err.response?.data?.error || "Biometric sign-in could not be removed." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="profile-settings-card profile-settings-span">
+      <div className="profile-settings-card-header">
+        <h2 className="profile-settings-card-title">Biometric sign-in</h2>
+        <p className="profile-settings-card-desc">
+          Connect Touch ID or this computer’s fingerprint reader to {email || "the account you are signed in with"}. It only works for this account, and the fingerprint stays on the device.
+        </p>
+      </div>
+      {!ready ? (
+        <p className="text-sm text-muted">This computer does not have Touch ID or a fingerprint reader, so biometric sign-in is unavailable.</p>
+      ) : connected ? (
+        <button className="btn btn-secondary" type="button" onClick={disconnect} disabled={busy}>
+          {busy ? "Removing…" : "Remove biometric sign-in"}
+        </button>
+      ) : (
+        <button className="btn btn-primary" type="button" onClick={connect} disabled={busy}>
+          {busy ? "Waiting for Touch ID…" : "Connect biometrics"}
+        </button>
+      )}
+      {msg && <div className={`profile-msg profile-msg--${msg.type}`}>{msg.text}</div>}
+    </section>
+  );
+}
+
 export default function ProfileSettings({ onThemeChange }) {
-  const { user, updateUser } = useUser();
+  const { user, setUser, updateUser } = useUser();
+  const [hasPasskey, setHasPasskey] = useState(Boolean(user?.hasPasskey));
 
   const [profileForm, setProfileForm] = useState({
     name: user?.name || "",
@@ -127,6 +200,7 @@ export default function ProfileSettings({ onThemeChange }) {
             name: profile.name || form.name,
             email: profile.email || form.email,
           }));
+          setHasPasskey(Boolean(profile.hasPasskey));
         })
         .catch(() => {});
     }
@@ -153,7 +227,7 @@ export default function ProfileSettings({ onThemeChange }) {
     }
   }
 
-  const [selectedTheme, setSelectedTheme] = useState(user?.preferredTheme || "light");
+  const [selectedTheme, setSelectedTheme] = useState(user?.preferredTheme || "dark");
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeMsg, setThemeMsg] = useState(null);
 
@@ -198,26 +272,14 @@ export default function ProfileSettings({ onThemeChange }) {
 
   return (
     <div className="profile-settings-page">
-      <div className="profile-settings-container">
+      <div className="profile-settings-container profile-settings-dashboard">
         <div className="profile-settings-header">
-          <h1 className="profile-settings-title">Profile &amp; Settings</h1>
-          <p className="profile-settings-subtitle">Manage your account details and appearance</p>
+          <h1 className="page-title">Profile &amp; Settings</h1>
+          <p className="page-subtitle">Account, appearance, and the data this copy keeps.</p>
         </div>
 
-        {/* Focus Shield quick access — mobile users land here from Profile too */}
-        <Link to="/blocking" className="profile-settings-card fs-quick-link">
-          <span className="fs-quick-link-icon" aria-hidden="true">🛡️</span>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span className="profile-settings-card-title" style={{ display: "block" }}>Focus Shield</span>
-            <span className="profile-settings-card-desc" style={{ display: "block", marginTop: 2 }}>
-              Manage blocked & whitelisted websites
-            </span>
-          </span>
-          <span aria-hidden="true">→</span>
-        </Link>
-
-        {/* Profile Info */}
-        <section className="profile-settings-card">
+        <div className="profile-settings-board">
+        <section className="profile-settings-card profile-settings-span">
           <div className="profile-settings-card-header">
             <h2 className="profile-settings-card-title">Profile Information</h2>
           </div>
@@ -233,7 +295,7 @@ export default function ProfileSettings({ onThemeChange }) {
           </div>
 
           <form onSubmit={handleProfileSave} className="profile-form">
-            <div className="profile-form-grid">
+            <div className="profile-form-grid profile-form-grid--account">
               <div className="profile-form-field">
                 <label className="profile-form-label" htmlFor="ps-name">Display Name</label>
                 <input
@@ -294,7 +356,16 @@ export default function ProfileSettings({ onThemeChange }) {
           </form>
         </section>
 
-        {/* Appearance */}
+        <BiometricSignIn
+          email={user?.email}
+          connected={hasPasskey}
+          onChange={(connected) => {
+            setHasPasskey(connected);
+            setUser({ ...user, hasPasskey: connected });
+          }}
+        />
+
+        <div className="profile-settings-split">
         <section className="profile-settings-card">
           <div className="profile-settings-card-header">
             <h2 className="profile-settings-card-title">Appearance</h2>
@@ -348,8 +419,19 @@ export default function ProfileSettings({ onThemeChange }) {
           )}
         </section>
 
-        {/* Support */}
-        <section className="profile-settings-card">
+        <Link to="/blocking" className="profile-settings-card fs-quick-link">
+          <span className="fs-quick-link-icon" aria-hidden="true">🛡️</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span className="profile-settings-card-title" style={{ display: "block" }}>Focus Shield</span>
+            <span className="profile-settings-card-desc" style={{ display: "block", marginTop: 2 }}>
+              Blocked sites, allowed sites, and the hours the shield runs.
+            </span>
+          </span>
+          <span aria-hidden="true">→</span>
+        </Link>
+        </div>
+
+        <section className="profile-settings-card profile-settings-span">
           <div className="profile-settings-card-header">
             <h2 className="profile-settings-card-title">About this copy</h2>
             <p className="profile-settings-card-desc">
@@ -390,6 +472,7 @@ export default function ProfileSettings({ onThemeChange }) {
           </form>
         </section>
 
+        <div className="profile-settings-split">
         <section className="profile-settings-card">
           <div className="profile-settings-card-header">
             <h2 className="profile-settings-card-title">Support {APP_NAME}</h2>
@@ -400,7 +483,19 @@ export default function ProfileSettings({ onThemeChange }) {
           <SupportLink />
         </section>
 
+        <section className="profile-settings-card">
+          <div className="profile-settings-card-header">
+            <h2 className="profile-settings-card-title">Testing & Demo Data</h2>
+            <p className="profile-settings-card-desc">
+              Instantly populate realistic academic tasks, completed focus sessions, timetable classes, rhythm energy check-ins, and Focus Shield rules for testing.
+            </p>
+          </div>
+          <TestDataButton />
+        </section>
+        </div>
+
         <PrivacySection />
+        </div>
       </div>
     </div>
   );

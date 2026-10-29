@@ -103,7 +103,7 @@ export default defineConfig({
         // disable that as well so navigations are never SW-intercepted.
         navigateFallback: undefined,
         globPatterns: ['**/*.{js,css,ico,png,svg}'],
-        globIgnores: ['**/audio/**', '**/sounds/**'],
+        globIgnores: ['**/audio/**', '**/sounds/**', '**/ocr/**'],
         runtimeCaching: [
           {
             urlPattern: /\.mp3$/i,

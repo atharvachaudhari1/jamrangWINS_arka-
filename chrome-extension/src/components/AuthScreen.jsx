@@ -1,9 +1,5 @@
-import React, { useState } from 'react'
-import { googleLogin } from '../utils/api.js'
-import { signInWithGoogle } from '../utils/googleAuth.js'
+import React, { useEffect, useState } from 'react'
 import { set } from '../utils/storage.js'
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
 export default function AuthScreen({ onLogin }) {
   const [error, setError] = useState('')
@@ -11,14 +7,22 @@ export default function AuthScreen({ onLogin }) {
   const [apiUrl, setApiUrl] = useState('http://localhost:4000/api')
   const [showConfig, setShowConfig] = useState(false)
 
+  useEffect(() => {
+    chrome.storage.session.get('doorway_authError', (data) => {
+      if (!data.doorway_authError) return
+      setError(data.doorway_authError)
+      chrome.storage.session.remove('doorway_authError')
+    })
+  }, [])
+
   async function handleGoogleSignIn() {
     setError('')
     setLoading(true)
     try {
       await set({ apiUrl })
-      const idToken = await signInWithGoogle(GOOGLE_CLIENT_ID)
-      const data = await googleLogin(idToken)
-      onLogin(data.token || data.accessToken, data.user)
+      const data = await chrome.runtime.sendMessage({ type: 'doorway:googleSignIn' })
+      if (!data?.token) throw new Error(data?.error || 'A Google sign-in window is already open. Close it, then try again.')
+      onLogin(data.token, data.user)
     } catch (err) {
       setError(err.message)
     } finally {

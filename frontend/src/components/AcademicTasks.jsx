@@ -6,6 +6,7 @@ import { recordWav } from "../accessibility/recordWav";
 import { transcribeWav } from "../accessibility/transcribe";
 import { PREF, readPref } from "../accessibility/prefs";
 import ReadAloud from "./ReadAloud";
+import DayClock, { clockwise, formatClock, formatSpan } from "./DayClock";
 
 const KINDS = [
   { id: "assignment", label: "Assignment" },
@@ -32,6 +33,51 @@ function toLocalInput(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function StudyWindow({ startMinutes, endMinutes, onChange, onSave }) {
+  const span = clockwise(startMinutes, endMinutes);
+  const endsTomorrow = endMinutes < startMinutes;
+  return (
+    <div className="study-clock">
+      <div className="study-clock-dial">
+        <DayClock startMinutes={startMinutes} endMinutes={endMinutes} onChange={onChange} />
+      </div>
+      <div className="study-clock-side">
+        <div className="study-clock-times">
+          <div>
+            <div className="study-clock-kicker">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M1.5 3.2h5.2v9.6H1.5zM9.3 3.2H14.5v9.6H9.3z" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              </svg>
+              Start
+            </div>
+            <div className="study-clock-time">{formatClock(startMinutes)}</div>
+            <div className="study-clock-when">Today</div>
+          </div>
+          <div>
+            <div className="study-clock-kicker">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.2 2.2v11.6M3.2 3h9.2L10 6l2.4 3H3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+              </svg>
+              End
+            </div>
+            <div className="study-clock-time">{formatClock(endMinutes)}</div>
+            <div className="study-clock-when">{endsTomorrow ? "Tomorrow" : "Today"}</div>
+          </div>
+        </div>
+        <div className="study-clock-duration">{formatSpan(span)}</div>
+        <p className="study-clock-note text-sm text-muted">Drag the marks around the day. Today uses this much time when it picks a task.</p>
+        {span < 45 && (
+          <p className="study-clock-warn">
+            <span aria-hidden="true">!</span>
+            This window is shorter than a typical task.
+          </p>
+        )}
+        <button className="btn btn-primary" type="button" onClick={onSave}>Save study window</button>
+      </div>
+    </div>
+  );
+}
+
 function summary(task) {
   return [
     task.title,
@@ -48,7 +94,8 @@ export default function AcademicTasks() {
   const [editingId, setEditingId] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [subjects, setSubjects] = useState([]);
-  const [studyMins, setStudyMins] = useState(120);
+  const [studyStart, setStudyStart] = useState(9 * 60);
+  const [studyEnd, setStudyEnd] = useState(11 * 60);
   const [filters, setFilters] = useState({ q: "", subject: "", kind: "", status: "open" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -79,7 +126,16 @@ export default function AcademicTasks() {
     Promise.all([api.get("/subjects"), api.get("/profile")])
       .then(([subjectRes, profile]) => {
         setSubjects(subjectRes.subjects || []);
-        if (profile.availableStudyMins) setStudyMins(profile.availableStudyMins);
+        if (profile.availableStudyMins) {
+          let stored = NaN;
+          try {
+            const raw = localStorage.getItem("doorway-study-start");
+            stored = raw == null || raw === "" ? NaN : Number(raw);
+          } catch { stored = NaN; }
+          const start = Number.isFinite(stored) && stored >= 0 && stored < 1440 ? Math.round(stored) : 9 * 60;
+          setStudyStart(start);
+          setStudyEnd((start + Number(profile.availableStudyMins)) % 1440);
+        }
       })
       .catch(() => {});
   }, []);
@@ -124,8 +180,10 @@ export default function AcademicTasks() {
   async function saveStudyTime() {
     setNotice("");
     setError("");
+    const availableStudyMins = clockwise(studyStart, studyEnd);
     try {
-      await api.put("/profile", { availableStudyMins: Number(studyMins) });
+      await api.put("/profile", { availableStudyMins });
+      try { localStorage.setItem("doorway-study-start", String(studyStart)); } catch { /* private mode */ }
       setNotice("Available study time saved. Today will use it.");
     } catch (err) {
       setError(err.response?.data?.error || "Study time could not be saved.");
@@ -287,11 +345,15 @@ export default function AcademicTasks() {
 
       <div className="card mb-4">
         <div className="card-title">Available study time</div>
-        <div className="academic-row">
-          <label htmlFor="study-mins">Minutes you can use today</label>
-          <input id="study-mins" className="input" type="number" min="15" max="720" value={studyMins} onChange={(e) => setStudyMins(e.target.value)} />
-          <button className="btn btn-secondary btn-sm" type="button" onClick={saveStudyTime}>Save</button>
-        </div>
+        <StudyWindow
+          startMinutes={studyStart}
+          endMinutes={studyEnd}
+          onChange={({ startMinutes, endMinutes }) => {
+            setStudyStart(startMinutes);
+            setStudyEnd(endMinutes);
+          }}
+          onSave={saveStudyTime}
+        />
       </div>
 
       <form className="card mb-4" onSubmit={submit} aria-label={editingId ? "Edit task" : "Add an academic task"}>

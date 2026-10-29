@@ -41,6 +41,14 @@ export const updateProfile = (data: {
   preferredTheme?: string
   availableStudyMins?: number
   rhythmEnabled?: boolean
+  education?: {
+    department?: string
+    program?: string
+    year?: string
+    semester?: string
+    dailyStudyMins?: number
+    setupComplete?: boolean
+  }
   publicProfile?: {
     name?: string
     github?: string

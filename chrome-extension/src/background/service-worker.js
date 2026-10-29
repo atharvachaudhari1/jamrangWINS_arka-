@@ -1,6 +1,35 @@
 // JumpyBrain Background Service Worker
 // Manages timer state and declarativeNetRequest blocking rules
 
+import { startSignals } from './signals.js';
+import { startStateLoop } from './stateLoop.js';
+import { startNudger } from './nudger.js';
+import { noteTaskAction, startOutcomeTracker } from './outcomeTracker.js';
+import { startGoogleAuth } from '../utils/googleAuth.js';
+import { seedPersona, summarize } from './bandit.js';
+import { syncLocalHistory } from './uploader.js';
+
+async function injectExistingPages() {
+  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  await Promise.all(tabs.map(async (tab) => {
+    if (!tab.id) return;
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['overlay.js'] });
+    } catch {
+      // Some browser pages (for example, the Chrome Web Store) reject injection.
+    }
+  }));
+}
+
+chrome.runtime.onInstalled.addListener(() => injectExistingPages().catch(() => {}));
+chrome.runtime.onStartup.addListener(() => injectExistingPages().catch(() => {}));
+
+startSignals();
+startStateLoop();
+startNudger();
+startOutcomeTracker();
+startGoogleAuth();
+
 const TIMER_ALARM = 'bb-timer';
 const SYNC_ALARM  = 'bb-blocking-sync';
 
@@ -166,6 +195,20 @@ chrome.runtime.onStartup.addListener(async () => {
 // ── Message handler ──────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === 'doorway:debugBandit') {
+    chrome.storage.local.get('doorway_bandit').then((data) => sendResponse(summarize(data.doorway_bandit || {})));
+    return true;
+  }
+  if (msg?.type === 'doorway:seedBandit') {
+    const store = seedPersona();
+    chrome.storage.local.set({ doorway_bandit: store }).then(() => sendResponse(summarize(store)));
+    return true;
+  }
+  if (msg?.type === 'doorway:syncInsights') {
+    syncLocalHistory().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (typeof msg?.type === 'string' && msg.type.startsWith('doorway:')) return;
   handleMessage(msg).then(sendResponse).catch((err) => sendResponse({ error: err.message }));
   return true;
 });
@@ -188,12 +231,13 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg?.type === 'SET_AUTH') {
-    const { authToken, apiUrl, user } = msg.payload || {};
+    const { authToken, apiUrl, appUrl, user } = msg.payload || {};
     if (!authToken || !apiUrl) {
       sendResponse({ error: 'Missing authToken or apiUrl' });
       return;
     }
-    chrome.storage.local.set({ authToken, apiUrl, user: user || null })
+    chrome.storage.local.set({ authToken, apiUrl, appUrl, user: user || null })
+      .then(() => syncLocalHistory())
       .then(syncAndApplyRules)
       .then(() => sendResponse({ ok: true }));
     return true;
@@ -226,7 +270,10 @@ async function handleMessage({ type, payload }) {
       chrome.alarms.create(TIMER_ALARM, { when: next.endsAt });
 
       // Enable blocking when a work session starts
-      if (next.isWork) await evaluateAndApplyRules();
+      if (next.isWork) {
+        await evaluateAndApplyRules();
+        await noteTaskAction();
+      }
 
       return { ok: true };
     }
@@ -367,6 +414,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   });
 
   if (wasWork) {
+    noteTaskAction().catch(() => {});
     logSessionToBackend(state).catch(() => {});
   }
 });

@@ -58,10 +58,10 @@ function createPng(size, [r, g, b]) {
 const outDir = path.join(__dirname, '../public/icons');
 fs.mkdirSync(outDir, { recursive: true });
 
-// JumpyBrain purple: #7c3aed = [124, 58, 237]
-const purple = [124, 58, 237];
+// Doorway coral: #ff6d3d = [255, 109, 61]
+const coral = [255, 109, 61];
 for (const size of [16, 48, 128]) {
-  fs.writeFileSync(path.join(outDir, `icon${size}.png`), createPng(size, purple));
+  fs.writeFileSync(path.join(outDir, `icon${size}.png`), createPng(size, coral));
   console.log(`Created icon${size}.png`);
 }
 console.log('Icons generated.');

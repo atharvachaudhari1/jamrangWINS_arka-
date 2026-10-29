@@ -7,12 +7,36 @@ import QuickTaskAdd from './components/QuickTaskAdd.jsx'
 import QuickBrainDump from './components/QuickBrainDump.jsx'
 import QuickTimer from './components/QuickTimer.jsx'
 import BlockingTab from './components/BlockingTab.jsx'
+import NudgeSettings from './components/NudgeSettings.jsx'
+import InsightsPanel from './components/InsightsPanel.jsx'
+import SignalMonitor from './components/SignalMonitor.jsx'
 import NavBar from './components/NavBar.jsx'
+
+function MoreMenu({ onChange }) {
+  const items = [
+    ['signals', 'Live signals', 'See what Doorway is noticing'],
+    ['blocking', 'Focus Shield', 'Manage distracting sites'],
+    ['settings', 'Settings and insights', 'Nudges, quiet hours, and history'],
+  ]
+  return (
+    <section className="more-menu" aria-labelledby="more-title">
+      <h1 id="more-title">More</h1>
+      <p className="text-muted text-sm">Tools and preferences</p>
+      {items.map(([id, title, description]) => (
+        <button className="more-action" key={id} onClick={() => onChange(id)}>
+          <span><strong>{title}</strong><small>{description}</small></span>
+          <span aria-hidden="true">›</span>
+        </button>
+      ))}
+    </section>
+  )
+}
 
 export default function App() {
   const [authed, setAuthed] = useState(false)
   const [user, setUserState] = useState(null)
   const [tab, setTab] = useState('next')
+  const [captureMode, setCaptureMode] = useState('task')
   const [loading, setLoading] = useState(true)
   const [taskRevision, setTaskRevision] = useState(0)
 
@@ -21,6 +45,12 @@ export default function App() {
       if (token) { setAuthed(true); setUserState(u) }
       setLoading(false)
     })
+    function onChanged(changes, area) {
+      if (area !== 'local' || !changes.authToken?.newValue) return
+      getUser().then((u) => { setAuthed(true); setUserState(u); setLoading(false) })
+    }
+    chrome.storage.onChanged.addListener(onChanged)
+    return () => chrome.storage.onChanged.removeListener(onChanged)
   }, [])
 
   // Connect socket when authed; bump taskRevision on task events so WhatNext refetches
@@ -77,36 +107,46 @@ export default function App() {
       <header className="popup-header">
         <div className="popup-logo">
           <svg width="20" height="20" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <defs>
-              <linearGradient id="extG" x1="13" y1="17" x2="82" y2="80" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#7C3AED"/>
-                <stop offset="42%" stopColor="#6366F1"/>
-                <stop offset="100%" stopColor="#06B6D4"/>
-              </linearGradient>
-            </defs>
-            <circle cx="23" cy="23" r="5.5" fill="url(#extG)"/>
-            <path d="M 37 23 L 37 66 Q 37 80 20 80" stroke="url(#extG)" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M 55 23 L 55 80" stroke="url(#extG)" strokeWidth="8" strokeLinecap="round"/>
-            <path d="M 55 23 Q 78 23 78 38 Q 78 52 55 52" stroke="url(#extG)" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M 55 52 Q 82 52 82 66 Q 82 80 55 80" stroke="url(#extG)" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="23" cy="23" r="5.5" fill="#FF6D3D"/>
+            <path d="M 37 23 L 37 66 Q 37 80 20 80" stroke="#FF6D3D" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M 55 23 L 55 80" stroke="#FF6D3D" strokeWidth="8" strokeLinecap="round"/>
+            <path d="M 55 23 Q 78 23 78 38 Q 78 52 55 52" stroke="#FF6D3D" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M 55 52 Q 82 52 82 66 Q 82 80 55 80" stroke="#FF6D3D" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           Doorway
         </div>
         <div className="flex items-center gap-2">
           <span className="popup-user">{user?.name || user?.email || ''}</span>
-          <button className="btn btn-ghost btn-sm" onClick={onLogout} title="Logout">↩</button>
+          <button className="btn btn-ghost btn-sm" onClick={onLogout} title="Logout" aria-label="Log out">↩</button>
         </div>
       </header>
 
       <div className="popup-content">
         {tab === 'next'     && <WhatNext taskRevision={taskRevision} />}
-        {tab === 'add'      && <QuickTaskAdd onAdded={() => setTab('next')} />}
-        {tab === 'dump'     && <QuickBrainDump />}
+        {tab === 'capture'  && (
+          <>
+            <div className="mode-tabs" aria-label="Capture type">
+              <button className={`mode-tab ${captureMode === 'task' ? 'active' : ''}`} onClick={() => setCaptureMode('task')}>Add task</button>
+              <button className={`mode-tab ${captureMode === 'dump' ? 'active' : ''}`} onClick={() => setCaptureMode('dump')}>Brain dump</button>
+            </div>
+            {captureMode === 'task'
+              ? <QuickTaskAdd onAdded={() => setTab('next')} />
+              : <QuickBrainDump />}
+          </>
+        )}
         {tab === 'timer'    && <QuickTimer />}
         {tab === 'blocking' && <BlockingTab />}
+        {tab === 'signals'  && <SignalMonitor />}
+        {tab === 'more'     && <MoreMenu onChange={setTab} />}
+        {tab === 'settings' && (
+          <>
+            <InsightsPanel />
+            <NudgeSettings />
+          </>
+        )}
       </div>
 
-      <NavBar active={tab} onChange={setTab} />
+      <NavBar active={['signals', 'blocking', 'settings'].includes(tab) ? 'more' : tab} onChange={setTab} />
     </div>
   )
 }

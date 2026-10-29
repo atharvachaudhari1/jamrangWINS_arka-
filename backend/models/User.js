@@ -25,9 +25,17 @@ const userSchema = new mongoose.Schema({
   preferredTheme: {
     type: String,
     enum: ['dark', 'light'],
-    default: 'light',
+    default: 'dark',
   },
   availableStudyMins: { type: Number, default: 120, min: 15, max: 720 },
+  education: {
+    department: { type: String, default: '', maxlength: 120 },
+    program: { type: String, default: '', maxlength: 120 },
+    year: { type: String, default: '', maxlength: 40 },
+    semester: { type: String, default: '', maxlength: 40 },
+    dailyStudyMins: { type: Number, default: 120, min: 15, max: 720 },
+    setupComplete: { type: Boolean, default: false },
+  },
   rhythmEnabled: { type: Boolean, default: false },
   restUntil: { type: Date, default: null },
   pinnedTaskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task', default: null },
@@ -39,6 +47,12 @@ const userSchema = new mongoose.Schema({
     email: { type: String, default: '', maxlength: 200 },
   },
   googleId: { type: String, required: true, unique: true },
+  passkeys: [{
+    credentialId: { type: String, required: true },
+    publicKey: { type: String, required: true },
+    counter: { type: Number, default: 0 },
+    transports: [{ type: String }],
+  }],
   integrations: {
     gmail: { type: integrationSchema, default: () => ({}) },
     gcal:  { type: integrationSchema, default: () => ({}) },
@@ -48,4 +62,3 @@ const userSchema = new mongoose.Schema({
 });
 
 module.exports = mongoose.model('User', userSchema);
-

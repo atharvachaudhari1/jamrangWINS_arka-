@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "node --test --experimental-test-module-mocks --test-concurrency=1 tests/recommendationRank.test.js tests/auth.google.test.js tests/planner.test.js tests/services.test.js tests/api.test.js tests/mindfulnessCoach.test.js tests/nudgePolicy.test.js",
+    "test": "node --test --experimental-test-module-mocks --test-concurrency=1 tests/recommendationRank.test.js tests/auth.google.test.js tests/planner.test.js tests/services.test.js tests/api.test.js tests/mindfulnessCoach.test.js tests/nudgePolicy.test.js tests/recommendationEvents.test.js",
     "dev": "node --watch server.js",
     "start": "node server.js",
     "migrate:google-only": "node scripts/migrateToGoogleOnly.js"
@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.3",
     "axios": "^1.13.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

@@ -8,8 +8,14 @@
 
     <!-- PWA. theme-color matches the page background and is updated when the theme changes. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#f5f5f7" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
+    <script>
+      (function () {
+        var theme = localStorage.getItem("bb-theme") || "dark";
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

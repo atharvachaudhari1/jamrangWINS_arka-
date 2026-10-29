@@ -36,7 +36,9 @@ router.get("/daily", auth, async (req, res) => {
 
   res.json({
     tasksCompleted: tasks.length,
-    totalSessionMins: sessions.reduce((a, s) => a + s.durationMins, 0)
+    totalSessionMins: sessions.reduce((a, s) => a + (s.durationMins || 0), 0),
+    tasks,
+    sessions,
   });
 });
 

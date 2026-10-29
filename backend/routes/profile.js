@@ -56,8 +56,10 @@ router.get('/', auth, async (req, res) => {
     gender: user.gender,
     preferredTheme: user.preferredTheme,
     availableStudyMins: user.availableStudyMins,
+    education: user.education || {},
     rhythmEnabled: user.rhythmEnabled,
     publicProfile: publicProfileOf(user),
+    hasPasskey: Array.isArray(user.passkeys) && user.passkeys.length > 0,
   });
 });
 
@@ -113,6 +115,35 @@ router.put('/', auth, async (req, res) => {
     update.availableStudyMins = mins;
   }
 
+  if (req.body?.education !== undefined) {
+    const incoming = req.body.education;
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+      return res.status(400).json({ error: 'Education details are invalid.' });
+    }
+    const next = { ...(existing.education?.toObject?.() || existing.education || {}) };
+    for (const [key, max] of [['department', 120], ['program', 120], ['year', 40], ['semester', 40]]) {
+      if (incoming[key] === undefined) continue;
+      if (typeof incoming[key] !== 'string' || incoming[key].trim().length > max) {
+        return res.status(400).json({ error: `${key} must be text up to ${max} characters.` });
+      }
+      next[key] = incoming[key].trim();
+    }
+    if (incoming.dailyStudyMins !== undefined) {
+      const mins = Number(incoming.dailyStudyMins);
+      if (!Number.isInteger(mins) || mins < 15 || mins > 720) {
+        return res.status(400).json({ error: 'Daily study time must be between 15 and 720 minutes.' });
+      }
+      next.dailyStudyMins = mins;
+    }
+    if (incoming.setupComplete !== undefined) {
+      if (typeof incoming.setupComplete !== 'boolean') {
+        return res.status(400).json({ error: 'Setup status must be true or false.' });
+      }
+      next.setupComplete = incoming.setupComplete;
+    }
+    update.education = next;
+  }
+
   if (req.body?.rhythmEnabled !== undefined) {
     if (typeof req.body.rhythmEnabled !== 'boolean') {
       return res.status(400).json({ error: 'Your Rhythm must be on or off.' });
@@ -157,6 +188,7 @@ router.put('/', auth, async (req, res) => {
     gender: user.gender,
     preferredTheme: user.preferredTheme,
     availableStudyMins: user.availableStudyMins,
+    education: user.education || {},
     rhythmEnabled: user.rhythmEnabled,
     publicProfile: publicProfileOf(user),
   });

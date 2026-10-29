@@ -276,7 +276,7 @@ export default function TodoList() {
     try {
       const res = await api.post("/tasks/brain-dump", { text: dumpText, energyLevel: energy });
       const count = res.tasks?.length || 0;
-      notify("🧠 Dumped!", `${count} task${count !== 1 ? "s" : ""} extracted.`);
+      notify("Dump complete", `${count} task${count !== 1 ? "s" : ""} extracted.`);
       setDumpText("");
       setView("tasks");
       load();
@@ -347,7 +347,7 @@ export default function TodoList() {
             onClick={() => setView("dump")}
             aria-pressed={view === "dump"}
           >
-            🧠 Brain Dump
+            Brain Dump
           </button>
         </div>
       </div>
@@ -379,7 +379,7 @@ export default function TodoList() {
                   onClick={submitDump}
                   disabled={dumpLoading || !dumpText.trim()}
                 >
-                  {dumpLoading ? "⏳ Parsing..." : "🧠 Chunk with AI"}
+                  {dumpLoading ? "Parsing..." : "Parse with AI"}
                 </button>
                 <button className="btn btn-ghost" onClick={() => setDumpText("")}>
                   Clear
@@ -451,7 +451,7 @@ export default function TodoList() {
                           <div className="task-title-text">
                             {idx === 0 && (
                               <span className="badge badge-violet" style={{ marginRight: 6, verticalAlign: "middle" }}>
-                                ⚡ Next
+                                Next
                               </span>
                             )}
                             {t.title}
@@ -462,10 +462,10 @@ export default function TodoList() {
                         <div className="task-meta">
                           {t.dueAt && (
                             <span style={{ color: (new Date(t.dueAt) - new Date()) / 3600000 < 24 ? "var(--red)" : "var(--muted)" }}>
-                              📅 {fmtDue(t.dueAt)}
+                              Due {fmtDue(t.dueAt)}
                             </span>
                           )}
-                          {t.estimateMins && <span>⏱ ~{t.estimateMins}m</span>}
+                          {t.estimateMins && <span>~{t.estimateMins}m</span>}
                           <DreadMeter score={t.dreadScore || 3} onChange={(n) => updateDread(t._id, n)} />
                         </div>
 
@@ -481,8 +481,8 @@ export default function TodoList() {
                         )}
 
                         <div className="task-actions">
-                          <button className="btn btn-success btn-sm" onClick={() => complete(t._id)}>✓ Done</button>
-                          <button className="btn btn-secondary btn-sm" onClick={() => autoChunk(t)}>✂ Chunk</button>
+                          <button className="btn btn-success btn-sm" onClick={() => complete(t._id)}>Done</button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => autoChunk(t)}>Chunk</button>
                           <button
                             className="btn btn-ghost btn-sm"
                             onClick={() => {
@@ -493,7 +493,7 @@ export default function TodoList() {
                               setEditDread(t.dreadScore || 3);
                             }}
                           >
-                            ✎ Edit
+                            Edit
                           </button>
                         </div>
                       </>
@@ -504,13 +504,18 @@ export default function TodoList() {
                 {/* Empty state with direct CTA */}
                 {tasks.length === 0 && (
                   <div className="empty-state">
-                    <div className="empty-state-icon">📭</div>
+                    <div className="empty-state-icon" style={{ opacity: 0.6 }}>
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                        <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                      </svg>
+                    </div>
                     <div className="empty-state-title">No tasks yet</div>
                     <div className="empty-state-body">
                       Try the Brain Dump — type everything on your mind and AI will turn it into tasks.
                     </div>
                     <button className="btn btn-primary" onClick={() => setView("dump")}>
-                      🧠 Start Brain Dump
+                      Start Brain Dump
                     </button>
                   </div>
                 )}
@@ -563,7 +568,11 @@ export default function TodoList() {
               !suggestionsLoading && (
                 /* Empty suggestions state — don't send users elsewhere */
                 <div className="empty-state" style={{ padding: "16px 0" }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>✨</div>
+                  <div style={{ marginBottom: 8, color: "var(--muted)" }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                  </div>
                   <div className="text-sm text-muted" style={{ textAlign: "center", lineHeight: 1.6 }}>
                     {tasks.length === 0
                       ? "Add your first task to get AI-powered suggestions."
@@ -578,7 +587,7 @@ export default function TodoList() {
             <div className="card-title">Energy context</div>
             <div className="text-sm text-muted" style={{ lineHeight: 1.6 }}>
               Tasks are ranked for your current energy.{" "}
-              <span style={{ color: "var(--amber)" }}>⚡ Next</span> shows your best match.
+              <span style={{ color: "var(--amber)", fontWeight: 600 }}>Next</span> shows your best match.
             </div>
           </div>
         </aside>

@@ -268,3 +268,18 @@ test('account: export excludes tokens, delete requires confirmation and removes 
   assert.equal(await Task.countDocuments({ userId: victim.user._id }), 0);
   assert.ok(await User.findById(alice.user._id), 'other accounts are untouched');
 });
+
+test('account: seed-test-data populates tasks, sessions, timetable, rhythm, and shield', async () => {
+  const tester = await makeUser('Dave');
+  const res = await api.post('/api/account/seed-test-data').set(tester.auth);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.ok, true);
+  assert.ok(res.body.counts.tasks > 0);
+  assert.ok(res.body.counts.sessions > 0);
+  assert.ok(res.body.counts.timetable > 0);
+  assert.ok(res.body.counts.energyCheckins > 0);
+
+  const taskCount = await Task.countDocuments({ userId: tester.user._id });
+  assert.equal(taskCount, res.body.counts.tasks);
+});
+

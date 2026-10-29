@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import api from "../services/api";
 import { useEnergy } from "../contexts/EnergyContext";
 import { PREF, readPref } from "../accessibility/prefs";
@@ -273,70 +274,151 @@ export default function TodayCard() {
             </p>
           )}
           <div className="today-actions">
-            <button className="btn btn-primary" type="button" disabled={busy} aria-expanded={panel === "do"}
-              onClick={() => { setConfirm(null); setPanel(panel === "do" ? null : "do"); }}>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+              className="btn btn-primary"
+              type="button"
+              disabled={busy}
+              aria-expanded={panel === "do"}
+              onClick={() => { setConfirm(null); setPanel(panel === "do" ? null : "do"); }}
+            >
               Do it
-            </button>
-            <button className="btn btn-secondary" type="button" disabled={busy} aria-expanded={panel === "smaller"} onClick={openSmaller}>
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+              className="btn btn-secondary"
+              type="button"
+              disabled={busy}
+              aria-expanded={panel === "smaller"}
+              onClick={openSmaller}
+            >
               Smaller
-            </button>
-            <button className="btn btn-ghost" type="button" disabled={busy} aria-expanded={panel === "change"}
-              onClick={() => { setConfirm(null); setPanel(panel === "change" ? null : "change"); }}>
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+              className="btn btn-ghost"
+              type="button"
+              disabled={busy}
+              aria-expanded={panel === "change"}
+              onClick={() => { setConfirm(null); setPanel(panel === "change" ? null : "change"); }}
+            >
               Change
-            </button>
-            <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => act("rest")}>
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+              className="btn btn-ghost"
+              type="button"
+              disabled={busy}
+              onClick={() => act("rest")}
+            >
               Rest
-            </button>
-            <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => act("notnow")}>
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+              className="btn btn-ghost"
+              type="button"
+              disabled={busy}
+              onClick={() => act("notnow")}
+            >
               Not now
-            </button>
+            </motion.button>
           </div>
 
-          {panel === "do" && (
-            <div className="today-panel" role="group" aria-label="Do it options">
-              <button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={() => act("do")}>Start focus</button>
-              <button className="btn btn-secondary btn-sm" type="button" disabled={busy} onClick={askComplete}>Mark done</button>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => setPanel(null)}>Cancel</button>
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {panel === "do" && (
+              <motion.div
+                key="panel-do"
+                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+                className="today-panel"
+                role="group"
+                aria-label="Do it options"
+              >
+                <motion.button whileTap={{ scale: 0.95 }} className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={() => act("do")}>
+                  Start focus
+                </motion.button>
+                <motion.button whileTap={{ scale: 0.95 }} className="btn btn-secondary btn-sm" type="button" disabled={busy} onClick={askComplete}>
+                  Mark done
+                </motion.button>
+                <motion.button whileTap={{ scale: 0.95 }} className="btn btn-ghost btn-sm" type="button" onClick={() => setPanel(null)}>
+                  Cancel
+                </motion.button>
+              </motion.div>
+            )}
 
-          {panel === "smaller" && smaller && (
-            <form
-              className="today-panel today-panel-form"
-              aria-label="Smaller step"
-              onSubmit={(e) => { e.preventDefault(); act("smaller", { step: smaller }); }}
-            >
-              <p className="text-sm">A smaller step for this task. Change it if you like. The larger task stays on your list.</p>
-              <label className="sr-only" htmlFor="smaller-title">Smaller step</label>
-              <input id="smaller-title" className="input" value={smaller.title} maxLength={500} required
-                onChange={(e) => setSmaller({ ...smaller, title: e.target.value })} />
-              <label className="today-inline-label" htmlFor="smaller-mins">
-                Minutes
-                <input id="smaller-mins" className="input today-mins" type="number" min={1} max={120} required
-                  value={smaller.estimateMins} onChange={(e) => setSmaller({ ...smaller, estimateMins: Number(e.target.value) })} />
-              </label>
-              <div className="today-panel-row">
-                <button className="btn btn-primary btn-sm" type="submit" disabled={busy || !smaller.title.trim()}>Use this step</button>
-                <button className="btn btn-ghost btn-sm" type="button" onClick={closePanels}>Cancel</button>
-              </div>
-            </form>
-          )}
+            {panel === "smaller" && smaller && (
+              <motion.form
+                key="panel-smaller"
+                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+                className="today-panel today-panel-form"
+                aria-label="Smaller step"
+                onSubmit={(e) => { e.preventDefault(); act("smaller", { step: smaller }); }}
+              >
+                <p className="text-sm">A smaller step for this task. Change it if you like. The larger task stays on your list.</p>
+                <label className="sr-only" htmlFor="smaller-title">Smaller step</label>
+                <input id="smaller-title" className="input" value={smaller.title} maxLength={500} required
+                  onChange={(e) => setSmaller({ ...smaller, title: e.target.value })} />
+                <label className="today-inline-label" htmlFor="smaller-mins">
+                  Minutes
+                  <input id="smaller-mins" className="input today-mins" type="number" min={1} max={120} required
+                    value={smaller.estimateMins} onChange={(e) => setSmaller({ ...smaller, estimateMins: Number(e.target.value) })} />
+                </label>
+                <div className="today-panel-row">
+                  <motion.button whileTap={{ scale: 0.95 }} className="btn btn-primary btn-sm" type="submit" disabled={busy || !smaller.title.trim()}>
+                    Use this step
+                  </motion.button>
+                  <motion.button whileTap={{ scale: 0.95 }} className="btn btn-ghost btn-sm" type="button" onClick={closePanels}>
+                    Cancel
+                  </motion.button>
+                </div>
+              </motion.form>
+            )}
 
-          {panel === "change" && (
-            <div className="today-panel" role="group" aria-label="Change options">
-              <button className="btn btn-secondary btn-sm" type="button" disabled={busy} onClick={() => act("change")}>Suggest another</button>
-              {(plan.options || []).filter((option) => option._id !== task._id).map((option) => (
-                <button key={option._id} className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => act("choose", { taskId: option._id })}>
-                  {option.subject ? `${option.subject}: ` : ""}{option.title}
-                </button>
-              ))}
-              <span className="today-panel-label">Or move this task to</span>
-              <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => act("change", { laterMins: 60 })}>In an hour</button>
-              <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => act("change", { laterMins: 180 })}>Later today</button>
-              <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => act("change", { laterMins: minutesUntilTomorrowMorning() })}>Tomorrow morning</button>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => setPanel(null)}>Cancel</button>
-            </div>
-          )}
+            {panel === "change" && (
+              <motion.div
+                key="panel-change"
+                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+                className="today-panel"
+                role="group"
+                aria-label="Change options"
+              >
+                <motion.button whileTap={{ scale: 0.95 }} className="btn btn-secondary btn-sm" type="button" disabled={busy} onClick={() => act("change")}>
+                  Suggest another
+                </motion.button>
+                {(plan.options || []).filter((option) => option._id !== task._id).map((option) => (
+                  <motion.button whileTap={{ scale: 0.95 }} key={option._id} className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => act("choose", { taskId: option._id })}>
+                    {option.subject ? `${option.subject}: ` : ""}{option.title}
+                  </motion.button>
+                ))}
+                <span className="today-panel-label">Or move this task to</span>
+                <motion.button whileTap={{ scale: 0.95 }} className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => act("change", { laterMins: 60 })}>
+                  In an hour
+                </motion.button>
+                <motion.button whileTap={{ scale: 0.95 }} className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => act("change", { laterMins: 180 })}>
+                  Later today
+                </motion.button>
+                <motion.button whileTap={{ scale: 0.95 }} className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => act("change", { laterMins: minutesUntilTomorrowMorning() })}>
+                  Tomorrow morning
+                </motion.button>
+                <motion.button whileTap={{ scale: 0.95 }} className="btn btn-ghost btn-sm" type="button" onClick={() => setPanel(null)}>
+                  Cancel
+                </motion.button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </>
       ) : (
         <>

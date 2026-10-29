@@ -10,33 +10,55 @@
 // `https://<extension-id>.chromiumapp.org/` (chrome.identity.getRedirectURL())
 // as an authorized redirect URI on the existing GOOGLE_CLIENT_ID OAuth client.
 
-export function signInWithGoogle(clientId) {
-  return new Promise((resolve, reject) => {
-    if (!clientId) {
-      reject(new Error('Google Sign-In is not configured for this extension.'));
-      return;
-    }
+import { googleLogin } from './api.js';
+import { syncLocalHistory } from '../background/uploader.js';
+import { getApiUrl, setToken, setUser } from './storage.js';
 
-    const redirectUri = chrome.identity.getRedirectURL();
-    const nonce = crypto.randomUUID();
+let inflight = null;
+
+function failMessage(message) {
+  if (message && message.includes('Only one web auth flow')) {
+    return 'A Google sign-in window is already open. Close it, then try again.';
+  }
+  return message || 'Google sign-in was cancelled';
+}
+
+export function signInWithGoogle(clientId) {
+  if (inflight) return inflight;
+  inflight = launch(clientId).finally(() => {
+    inflight = null;
+  });
+  return inflight;
+}
+
+async function launch(clientId) {
+  if (!clientId) throw new Error('Google Sign-In is not configured for this extension.');
+  const apiUrl = await getApiUrl();
+  const redirectUri = new URL(apiUrl || 'http://localhost:4000/api');
+  redirectUri.pathname = '/api/auth/google/extension-callback';
+  redirectUri.search = '';
+  redirectUri.hash = '';
+  const nonce = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
 
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('response_type', 'id_token');
-    authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('redirect_uri', redirectUri.toString());
     authUrl.searchParams.set('scope', 'openid email profile');
     authUrl.searchParams.set('nonce', nonce);
     authUrl.searchParams.set('prompt', 'select_account');
+    authUrl.searchParams.set('state', chrome.identity.getRedirectURL());
 
     chrome.identity.launchWebAuthFlow(
       { url: authUrl.toString(), interactive: true },
       (redirectedTo) => {
         if (chrome.runtime.lastError || !redirectedTo) {
-          reject(new Error(chrome.runtime.lastError?.message || 'Google sign-in was cancelled'));
+          reject(new Error(failMessage(chrome.runtime.lastError?.message)));
           return;
         }
-        const hash = new URL(redirectedTo).hash.slice(1);
-        const idToken = new URLSearchParams(hash).get('id_token');
+        const landed = new URL(redirectedTo);
+        const idToken = landed.searchParams.get('id_token') || new URLSearchParams(landed.hash.slice(1)).get('id_token');
         if (!idToken) {
           reject(new Error('Google did not return an ID token'));
           return;
@@ -44,5 +66,26 @@ export function signInWithGoogle(clientId) {
         resolve(idToken);
       }
     );
+  });
+}
+
+export function startGoogleAuth() {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type !== 'doorway:googleSignIn') return;
+    signInWithGoogle(import.meta.env.VITE_GOOGLE_CLIENT_ID)
+      .then(async (idToken) => {
+        const data = await googleLogin(idToken);
+        const token = data.token || data.accessToken;
+        await Promise.all([setToken(token), setUser(data.user)]);
+        await syncLocalHistory();
+        await chrome.storage.session.remove('doorway_authError');
+        try { sendResponse({ token, user: data.user }); } catch { /* popup already closed */ }
+      })
+      .catch(async (err) => {
+        const error = err.message || 'Google sign-in failed';
+        await chrome.storage.session.set({ doorway_authError: error });
+        try { sendResponse({ error }); } catch { /* popup already closed */ }
+      });
+    return true;
   });
 }

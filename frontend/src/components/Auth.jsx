@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { startAuthentication } from "@simplewebauthn/browser";
 import api from "../services/api";
 import { useUser } from "../contexts/UserContext";
 import { useNavigate } from "react-router-dom";
@@ -9,28 +10,48 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 export default function Auth() {
   const { setUser, setToken } = useUser();
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [kind, setKind] = useState("");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [devCode, setDevCode] = useState("");
+  const [step, setStep] = useState("choose");
+  const [busy, setBusy] = useState(false);
+  const [platformAuth, setPlatformAuth] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) return;
+    window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      .then(setPlatformAuth)
+      .catch(() => setPlatformAuth(false));
+  }, []);
+
+  function remember(data) {
+    localStorage.setItem("accessToken", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    setToken(data.token);
+    setUser(data.user);
+  }
+
+  function enter(data) {
+    remember(data);
+    navigate("/");
+  }
 
   const handleGoogleCredential = useCallback(async (response) => {
     setGoogleLoading(true);
     setError("");
     try {
       const data = await api.post("/auth/google", { idToken: response.credential });
-      setUser(data.user);
-      setToken(data.token);
-      navigate("/");
+      enter(data);
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.message ||
-        "Google sign-in failed";
-      setError(msg);
+      setError(err.response?.data?.error || err.message || "Google sign-in failed");
     } finally {
       setGoogleLoading(false);
     }
-  }, [navigate, setUser, setToken]);
+  }, [navigate, platformAuth, setUser, setToken]);
 
   const gsiInitializedRef = useRef(false);
   const googleButtonWrapRef = useRef(null);
@@ -42,12 +63,6 @@ export default function Auth() {
       client_id: GOOGLE_CLIENT_ID,
       callback: handleGoogleCredential,
     });
-    // Render Google's own button on top of our styled one. Unlike One Tap's
-    // silent prompt() below, a click on Google's real button always opens
-    // their standard account-chooser popup/redirect — this keeps working on
-    // a brand-new device/browser profile, with third-party cookies blocked,
-    // or anywhere else One Tap silently declines to show (which it does
-    // without any error, just no UI at all).
     if (googleButtonBoxRef.current) {
       const width = Math.min(400, Math.max(200, Math.round(
         googleButtonWrapRef.current?.getBoundingClientRect().width || 320
@@ -63,17 +78,10 @@ export default function Auth() {
       });
     }
     gsiInitializedRef.current = true;
-    // Also try the silent One Tap prompt for returning users on a device
-    // Google already recognizes. If it can't be shown, notification carries
-    // the reason but we don't surface it as an error — the real button
-    // above is always there as the reliable path.
     window.google.accounts.id.prompt();
     return true;
   }, [handleGoogleCredential]);
 
-  // Initialise Google Identity Services as soon as the script is ready.
-  // The script tag loads with `async defer`, so it may not be available yet
-  // on mount — poll briefly instead of giving up after a single check.
   useEffect(() => {
     if (initGoogleIdentity()) return;
     const interval = setInterval(() => {
@@ -82,57 +90,126 @@ export default function Auth() {
     return () => clearInterval(interval);
   }, [initGoogleIdentity]);
 
+  async function sendCode(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    setDevCode("");
+    try {
+      const data = await api.post("/auth/email/start", { email, kind });
+      setStep("code");
+      if (data.devCode) {
+        setDevCode(data.devCode);
+        setNotice("Mail is not set up on this computer, so the code is shown here.");
+      } else {
+        setNotice(`A code was sent to ${email}.`);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || "The code could not be sent.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyCode(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api.post("/auth/email/verify", { email, code });
+      enter(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "That code could not be checked.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signInWithPasskey() {
+    setBusy(true);
+    setError("");
+    try {
+      const options = await api.post("/auth/webauthn/login/options");
+      const assertion = await startAuthentication({ optionsJSON: options });
+      const data = await api.post("/auth/webauthn/login/verify", assertion);
+      remember(data);
+      navigate("/");
+    } catch (err) {
+      if (err?.name === "NotAllowedError") {
+        setError("Touch ID was cancelled.");
+      } else {
+        setError(err.response?.data?.error || "Biometric sign-in is not connected yet. Sign in, then connect it in Settings.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const emailLabel = kind === "work" ? "Work email" : "College email";
+
   return (
     <div className="auth-page">
+      <div className="auth-intro">
+        <Logo size={36} variant="icon" />
+        <h1 className="auth-title">Doorway</h1>
+        <p className="auth-subtitle">One small step at a time.</p>
+        <p className="auth-value">
+          An energy-aware academic planner. Sign in to keep your tasks, timetable, and focus tools.
+        </p>
+      </div>
+
       <div className="card auth-card">
-        <div className="auth-header">
-          <div className="auth-brand">
-            <Logo size={28} variant="icon" />
-          </div>
-          <h1 className="auth-title">Doorway</h1>
-          <p className="auth-subtitle">One small step at a time.</p>
-          <p className="auth-value">
-            An energy-aware academic planner. Sign in to keep your tasks, timetable, and existing integrations.
-          </p>
-        </div>
+        <h2 className="auth-card-title">Sign in</h2>
 
         <div className="auth-status" role="status" aria-live="polite">
           {error && <div className="auth-error">{error}</div>}
+          {notice && !error && <div className="auth-notice">{notice}</div>}
         </div>
 
-        {!GOOGLE_CLIENT_ID ? (
-          <p className="auth-value">Opening Doorway…</p>
+        {step === "code" ? (
+          <form className="auth-stack" onSubmit={verifyCode}>
+            <label>
+              Code sent to {email}
+              <input className="input" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} required />
+            </label>
+            {devCode && <p className="auth-dev-code">Development code: {devCode}</p>}
+            <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Checking…" : "Sign in"}</button>
+            <button className="btn btn-ghost" type="button" onClick={() => { setStep("choose"); setCode(""); setDevCode(""); setNotice(""); }}>Back</button>
+          </form>
+        ) : kind ? (
+          <form className="auth-stack" onSubmit={sendCode}>
+            <label>
+              {emailLabel}
+              <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder={kind === "work" ? "you@company.com" : "you@university.edu"} />
+            </label>
+            <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Sending…" : "Email me a code"}</button>
+            <button className="btn btn-ghost" type="button" onClick={() => { setKind(""); setError(""); }}>Back</button>
+          </form>
         ) : (
-          <div className="google-btn-wrap" ref={googleButtonWrapRef}>
-            <button
-              type="button"
-              className="btn-google"
-              disabled={googleLoading}
-              tabIndex={-1}
-              aria-hidden="true"
-            >
-              {googleLoading ? (
-                <>
-                  <span className="spinner" aria-hidden="true" />
-                  Redirecting…
-                </>
-              ) : (
-                <>
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
-                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
-                    <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
-                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 6.293C4.672 4.166 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                  </svg>
-                  Continue with Google
-                </>
-              )}
+          <div className="auth-stack">
+            {GOOGLE_CLIENT_ID ? (
+              <div className="google-btn-wrap" ref={googleButtonWrapRef}>
+                <button type="button" className="btn-google" disabled={googleLoading} tabIndex={-1} aria-hidden="true">
+                  {googleLoading ? "Redirecting…" : "Continue with Google"}
+                </button>
+                <div className="google-btn-overlay" ref={googleButtonBoxRef} />
+              </div>
+            ) : (
+              <p className="auth-value">Google sign-in needs a client id in the frontend env file.</p>
+            )}
+
+            <button className="btn-google" type="button" onClick={() => { setKind("college"); setError(""); }}>
+              College email
             </button>
-            {/* Google renders its real, clickable button here on top of the
-                styled one above (see .google-btn-overlay) so clicks open
-                Google's own popup/redirect flow directly, instead of going
-                through the silent, less reliable One Tap prompt. */}
-            <div className="google-btn-overlay" ref={googleButtonBoxRef} />
+            <button className="btn-google" type="button" onClick={() => { setKind("work"); setError(""); }}>
+              Work email
+            </button>
+            {platformAuth && (
+              <button className="btn-google" type="button" onClick={signInWithPasskey} disabled={busy}>
+                {busy ? "Waiting for Touch ID…" : "Touch ID or fingerprint"}
+              </button>
+            )}
           </div>
         )}
 

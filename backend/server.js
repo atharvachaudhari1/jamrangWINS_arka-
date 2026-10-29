@@ -93,6 +93,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// Syllabus analysis receives extracted text, so allow a larger body only on this endpoint.
+app.use('/api/subjects/analyze-syllabus', express.json({ limit: '256kb' }));
+app.use('/api/subjects/analyze-timetable', express.json({ limit: '256kb' }));
 app.use(express.json({ limit: '50kb' }));
 
 // connect mongodb

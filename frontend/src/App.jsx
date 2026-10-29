@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Link, NavLink, useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
 import Logo from "./components/Logo";
 import api from "./services/api";
 import Auth from "./components/Auth";
@@ -21,6 +22,10 @@ import Rhythm from "./components/Rhythm";
 import Accessibility from "./components/Accessibility";
 import VoiceAgent from "./components/VoiceAgent";
 import SupportLink from "./components/SupportLink";
+import VoiceNotes from "./components/VoiceNotes";
+import TestDataButton from "./components/TestDataButton";
+import AcademicSetup from "./components/AcademicSetup";
+import ExamPlan from "./components/ExamPlan";
 import { APP_NAME, TAGLINE } from "./config/brand";
 import { useUser } from "./contexts/UserContext";
 import { EnergyProvider } from "./contexts/EnergyContext";
@@ -117,6 +122,12 @@ const Icons = {
       <path d="M8 12h8M12 8v8" />
     </svg>
   ),
+  VoiceNote: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
+    </svg>
+  ),
 };
 
 const NAV_ITEMS = [
@@ -127,6 +138,8 @@ const NAV_ITEMS = [
 ];
 
 const SECONDARY_NAV = [
+  { to: "/exam-plan", label: "Exams & study plan", icon: Icons.Schedule },
+  { to: "/notes",     label: "Voice Notes",  icon: Icons.VoiceNote },
   { to: "/todo",      label: "All tasks",    icon: Icons.Tasks },
   { to: "/calendar",  label: "Task calendar", icon: Icons.Schedule },
   { to: "/dashboard", label: "Progress",     icon: Icons.Progress },
@@ -137,6 +150,7 @@ const SECONDARY_NAV = [
 ];
 
 const PREFERENCE_NAV = [
+  { to: "/academic-setup", label: "Semester details", icon: Icons.Tasks },
   { to: "/accessibility", label: "Accessibility", icon: Icons.Access },
   { to: "/settings", label: "Settings & Privacy", icon: Icons.Settings },
 ];
@@ -209,8 +223,19 @@ function Sidebar({ theme, setTheme, onLogout, open, onClose }) {
               className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
               onClick={onClose}
             >
-              <Icon />
-              {label}
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.div
+                      layoutId="sidebar-active-indicator"
+                      className="nav-active-pill"
+                      transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+                    />
+                  )}
+                  <Icon />
+                  <span className="nav-item-text">{label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </div>
@@ -225,8 +250,19 @@ function Sidebar({ theme, setTheme, onLogout, open, onClose }) {
               className={({ isActive }) => `nav-item nav-item-sm${isActive ? " active" : ""}`}
               onClick={onClose}
             >
-              <Icon />
-              {label}
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.div
+                      layoutId="sidebar-active-indicator"
+                      className="nav-active-pill"
+                      transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+                    />
+                  )}
+                  <Icon />
+                  <span className="nav-item-text">{label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </div>
@@ -264,8 +300,19 @@ function Sidebar({ theme, setTheme, onLogout, open, onClose }) {
               className={({ isActive }) => `nav-item nav-item-sm${isActive ? " active" : ""}`}
               onClick={onClose}
             >
-              <Icon />
-              {label}
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.div
+                      layoutId="sidebar-active-indicator"
+                      className="nav-active-pill"
+                      transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+                    />
+                  )}
+                  <Icon />
+                  <span className="nav-item-text">{label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </div>
@@ -387,8 +434,19 @@ function BottomNav({ onLogout }) {
           end={to === "/"}
           className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}
         >
-          <Icon />
-          <span>{label}</span>
+          {({ isActive }) => (
+            <>
+              {isActive && (
+                <motion.div
+                  layoutId="bottom-nav-active-indicator"
+                  className="bottom-nav-pill"
+                  transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+                />
+              )}
+              <Icon />
+              <span>{label}</span>
+            </>
+          )}
         </NavLink>
       ))}
       <NavLink
@@ -396,8 +454,19 @@ function BottomNav({ onLogout }) {
         className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}
         aria-label="Profile & Settings"
       >
-        <Icons.Profile />
-        <span>Profile</span>
+        {({ isActive }) => (
+          <>
+            {isActive && (
+              <motion.div
+                layoutId="bottom-nav-active-indicator"
+                className="bottom-nav-pill"
+                transition={{ type: "spring", stiffness: 260, damping: 32, mass: 0.85 }}
+              />
+            )}
+            <Icons.Profile />
+            <span>Profile</span>
+          </>
+        )}
       </NavLink>
     </nav>
   );
@@ -581,9 +650,12 @@ function DevNoticeBanner() {
           </span>
         </div>
       </div>
-      <Link to="/connectors" className="dev-banner-cta">
-        Integrations
-      </Link>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <TestDataButton variant="banner" />
+        <Link to="/connectors" className="dev-banner-cta">
+          Integrations
+        </Link>
+      </div>
     </div>
   );
 }
@@ -597,24 +669,50 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   const { user, setUser, setToken } = useUser();
+  const [educationChecked, setEducationChecked] = useState(false);
+  const [setupRequired, setSetupRequired] = useState(false);
   const [theme, setTheme] = useState(() => {
-    if (!localStorage.getItem("doorway-store-theme")) {
-      localStorage.setItem("doorway-store-theme", "1");
-      localStorage.setItem("bb-theme", "light");
+    if (localStorage.getItem("doorway-store-theme") !== "dark") {
+      localStorage.setItem("doorway-store-theme", "dark");
+      localStorage.setItem("bb-theme", "dark");
       try {
         const raw = localStorage.getItem("user");
         if (raw) {
           const parsed = JSON.parse(raw);
-          parsed.preferredTheme = "light";
+          parsed.preferredTheme = "dark";
           localStorage.setItem("user", JSON.stringify(parsed));
         }
       } catch { /* keep the saved session as it is */ }
-      return "light";
+      return "dark";
     }
-    return localStorage.getItem("bb-theme") || "light";
+    return localStorage.getItem("bb-theme") || "dark";
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      setEducationChecked(false);
+      setSetupRequired(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setEducationChecked(false);
+    api.get("/profile").then((profile) => {
+      if (!cancelled) setSetupRequired(profile.education?.setupComplete !== true);
+    }).catch(() => {
+      if (!cancelled) setSetupRequired(false);
+    }).finally(() => {
+      if (!cancelled) setEducationChecked(true);
+    });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  function finishEducationSetup(education) {
+    setSetupRequired(false);
+    setEducationChecked(true);
+    if (education) setUser({ ...user, education });
+  }
 
   // Apply theme whenever it changes
   useEffect(() => {
@@ -686,23 +784,30 @@ export default function App() {
 
           <main className="main-content" id="main-content">
             {user && <DevNoticeBanner />}
-            <Routes>
+            {user && !educationChecked ? (
+              <p role="status" aria-busy="true">Loading your semester details…</p>
+            ) : user && setupRequired ? (
+              <AcademicSetup onComplete={finishEducationSetup} />
+            ) : <Routes>
               <Route path="/auth" element={<Auth />} />
               <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/focus" element={<ProtectedRoute><FocusTimer /></ProtectedRoute>} />
               <Route path="/todo" element={<ProtectedRoute><TodoList /></ProtectedRoute>} />
               <Route path="/tasks" element={<ProtectedRoute><AcademicTasks /></ProtectedRoute>} />
+              <Route path="/exam-plan" element={<ProtectedRoute><ExamPlan /></ProtectedRoute>} />
+              <Route path="/academic-setup" element={<ProtectedRoute><AcademicSetup onComplete={finishEducationSetup} /></ProtectedRoute>} />
               <Route path="/timetable" element={<ProtectedRoute><Timetable /></ProtectedRoute>} />
               <Route path="/rhythm" element={<ProtectedRoute><Rhythm /></ProtectedRoute>} />
               <Route path="/accessibility" element={<ProtectedRoute><Accessibility /></ProtectedRoute>} />
               <Route path="/mindful" element={<ProtectedRoute><Mindfulness /></ProtectedRoute>} />
               <Route path="/deadline" element={<ProtectedRoute><DeadlineTimer /></ProtectedRoute>} />
               <Route path="/calendar" element={<ProtectedRoute><Calendar /></ProtectedRoute>} />
+              <Route path="/notes" element={<ProtectedRoute><VoiceNotes /></ProtectedRoute>} />
               <Route path="/connectors" element={<ProtectedRoute><ConnectorsPage /></ProtectedRoute>} />
               <Route path="/blocking" element={<ProtectedRoute><FocusShieldPage /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><ProfileSettings onThemeChange={setTheme} /></ProtectedRoute>} />
-            </Routes>
+            </Routes>}
           </main>
 
           {user && <VoiceAgent />}

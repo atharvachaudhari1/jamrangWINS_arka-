@@ -126,7 +126,7 @@ export default function FocusShieldPage() {
   if (loading || !local) {
     return (
       <div className="profile-settings-page">
-        <div className="profile-settings-container">
+        <div className="profile-settings-container profile-settings-dashboard">
           <p className="text-sm text-muted">Loading Focus Shield…</p>
         </div>
       </div>
@@ -208,12 +208,12 @@ export default function FocusShieldPage() {
 
   return (
     <div className="profile-settings-page">
-      <div className="profile-settings-container">
+      <div className="profile-settings-container profile-settings-dashboard">
         <div className="profile-settings-header fs-page-header">
           <div>
-            <h1 className="profile-settings-title">🛡️ Focus Shield</h1>
-            <p className="profile-settings-subtitle">
-              Block distracting sites during focus sessions, always allow the ones you need.
+            <h1 className="page-title">Focus Shield</h1>
+            <p className="page-subtitle">
+              Block distracting sites during focus sessions, and keep the ones you need.
             </p>
           </div>
           <span className="fs-save-indicator" aria-live="polite">
@@ -223,7 +223,7 @@ export default function FocusShieldPage() {
           </span>
         </div>
 
-        {/* Master toggle + status + pause */}
+        <div className="profile-settings-split">
         <section className="profile-settings-card">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -250,29 +250,35 @@ export default function FocusShieldPage() {
           </div>
         </section>
 
-        {/* Stats */}
-        <div className="grid-3">
-          <div className="stat-tile">
-            <div className="stat-value stat-violet">{local.blockedSites.length || "—"}</div>
-            <div className="stat-label">Blocked sites</div>
+        <section className="profile-settings-card">
+          <div className="profile-settings-card-header">
+            <h2 className="profile-settings-card-title">Right now</h2>
           </div>
-          <div className="stat-tile">
-            <div className="stat-value stat-green">{local.whitelist.length || "—"}</div>
-            <div className="stat-label">Whitelisted</div>
+          <div className="grid-3">
+            <div className="stat-tile">
+              <div className="stat-value stat-violet">{local.blockedSites.length || "—"}</div>
+              <div className="stat-label">Blocked sites</div>
+            </div>
+            <div className="stat-tile">
+              <div className="stat-value stat-green">{local.whitelist.length || "—"}</div>
+              <div className="stat-label">Whitelisted</div>
+            </div>
+            <div className="stat-tile">
+              <div className="stat-value stat-amber">{distractionsToday > 0 ? distractionsToday : "—"}</div>
+              <div className="stat-label">Distractions today</div>
+            </div>
           </div>
-          <div className="stat-tile">
-            <div className="stat-value stat-amber">{distractionsToday > 0 ? distractionsToday : "—"}</div>
-            <div className="stat-label">Distractions today</div>
-          </div>
+          {distractionsWeek > 0 && (
+            <p className="text-xs text-muted" style={{ margin: 0 }}>
+              {distractionsWeek} tab-switch distractions logged during focus sessions this week.
+            </p>
+          )}
+        </section>
         </div>
-        {distractionsWeek > 0 && (
-          <p className="text-xs text-muted" style={{ margin: "-8px 2px 0" }}>
-            {distractionsWeek} tab-switch distractions logged during focus sessions this week.
-          </p>
-        )}
 
         <PresetPicker blockedSites={local.blockedSites} onApply={(merged) => update({ blockedSites: merged })} />
 
+        <div className="profile-settings-split">
         <WebsiteListManager
           title="Blocked Websites"
           description="Blocked during active focus sessions and any scheduled block window."
@@ -294,8 +300,9 @@ export default function FocusShieldPage() {
           emptyTitle="No whitelisted websites yet"
           emptyBody="Add sites you always need — like docs or your work tools — so they're never blocked by mistake."
         />
+        </div>
 
-        {/* Blocked apps (mobile) */}
+        <div className="profile-settings-split">
         <section className="profile-settings-card">
           <div className="profile-settings-card-header">
             <h2 className="profile-settings-card-title">Blocked Apps</h2>
@@ -314,7 +321,6 @@ export default function FocusShieldPage() {
           <AppAddRow onAdd={addApp} />
         </section>
 
-        {/* Schedule */}
         <section className="profile-settings-card">
           <div className="flex items-center justify-between gap-3" style={{ marginBottom: local.schedule.enabled ? 16 : 0 }}>
             <div>
@@ -358,8 +364,8 @@ export default function FocusShieldPage() {
             </>
           )}
         </section>
+        </div>
 
-        {/* Import / Export */}
         <section className="profile-settings-card">
           <div className="profile-settings-card-header">
             <h2 className="profile-settings-card-title">Import / Export</h2>
