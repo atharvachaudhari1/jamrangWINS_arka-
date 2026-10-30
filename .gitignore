@@ -8,3 +8,4 @@ dist/
 .agents/
 .cursor/
 graphify-out/
+eng.traineddata

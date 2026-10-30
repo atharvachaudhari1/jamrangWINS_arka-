@@ -80,7 +80,7 @@ export function decideIntervention(state, history = [], now = Date.now(), learni
   if (previous) {
     const ignored = previous.action === 'ignored';
     const ladderComplete = (previous.level || 1) >= 3;
-    const cooldown = ignored ? (ladderComplete ? 5 * MINUTE : MINUTE) : 2 * MINUTE;
+    const cooldown = ignored ? (ladderComplete ? 2.5 * MINUTE : 0.5 * MINUTE) : MINUTE;
     if (now - previous.at < cooldown) return null;
   }
 

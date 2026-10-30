@@ -31,9 +31,9 @@ describe('decideIntervention', () => {
     assert.notEqual(result.level, 3);
   });
 
-  it('waits ten minutes between nudges', () => {
+  it('waits thirty seconds after an ignored nudge', () => {
     assert.equal(
-      decideIntervention({ state: 'thrashing' }, [row({ at: now - 5 * MINUTE })], now),
+      decideIntervention({ state: 'thrashing' }, [row({ at: now - 15 * 1000 })], now),
       null
     );
   });
@@ -127,7 +127,7 @@ describe('decideIntervention', () => {
     let store = {};
     for (let i = 0; i < 10; i += 1) store = updateArm('frozen', now, 'prompt', 'acted', 15, store);
     const learning = { learningEnabled: true, store, rng: () => 0.5 };
-    assert.equal(decideIntervention({ state: 'frozen' }, [row({ at: now - 5 * MINUTE })], now, learning), null);
+    assert.equal(decideIntervention({ state: 'frozen' }, [row({ at: now - 15 * 1000 })], now, learning), null);
     const dismissed = [
       row({ at: now - 50 * MINUTE, action: 'dismissed' }),
       row({ at: now - 40 * MINUTE, action: 'dismissed' }),
